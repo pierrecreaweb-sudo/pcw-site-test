@@ -83,6 +83,20 @@
         return data;
       },
       updateCoach: async (id, patch) => unwrap(await sb.from("coaches").update(patch).eq("id", id).select().single()),
+      // ---- console PCW (équipe PCW seulement)
+      adminDashboard: async () => unwrap(await sb.rpc("admin_dashboard")),
+      adminCoaches: async () => unwrap(await sb.rpc("admin_coaches")) || [],
+      adminSetBilling: async (coachId, patch) => unwrap(await sb.rpc("admin_set_billing", { p_coach_id: coachId, p_patch: patch })),
+      adminDeleteCoach: async (coachId) => { unwrap(await sb.rpc("admin_delete_coach", { p_coach_id: coachId })); },
+      adminResendInvite: async (coachId) => {
+        const { data, error } = await sb.functions.invoke("create-coach", { body: { action: "resend_invite", coach_id: coachId } });
+        if (error) {
+          let msg = error.message;
+          try { msg = (await error.context.json()).error || msg; } catch { /* réponse non JSON */ }
+          throw new ApiError(msg, "RESEND_INVITE");
+        }
+        return data;
+      },
       getSiteContent: async (coachId) => unwrap(await sb.from("site_content").select("*").eq("coach_id", coachId).single()),
       saveSiteContent: async (coachId, patch) => unwrap(await sb.from("site_content").update(patch).eq("coach_id", coachId).select().single()),
       list: async (table, coachId, order = "position") => {
@@ -206,6 +220,25 @@
       };
     }
 
+  const demoAdminCoaches = async () => {
+      db.coach_billing = db.coach_billing || [];
+      const now = Date.now();
+      return delay(clone(db.coaches.map((c) => {
+        const bs = (db.bookings || []).filter((b) => b.coach_id === c.id);
+        const live = bs.filter((b) => ["pending", "confirmed", "completed", "no_show"].includes(b.status));
+        const bl = db.coach_billing.find((x) => x.coach_id === c.id) || { coach_id: c.id, plan_status: "pending", live_since: null, commitment_months: 12,
+          setup_fee_cents: 3900, setup_waived: false, setup_paid_at: null, monthly_cents: 7900, paid_until: null, cancel_requested_at: null, notes: null };
+        return { id: c.id, slug: c.slug, display_name: c.display_name, city: c.city, status: c.status, custom_domain: c.custom_domain || null,
+          notify_email: c.notify_email || null, directory_listed: c.directory_listed !== false, created_at: c.created_at || null,
+          owner_email: c.notify_email || null, last_sign_in_at: null, invite_pending: false,
+          bookings_30d: live.filter((b) => Math.abs(new Date(b.starts_at) - now) < 30 * 864e5).length,
+          bookings_upcoming: bs.filter((b) => ["pending", "confirmed"].includes(b.status) && new Date(b.starts_at) > now).length,
+          bookings_total: bs.length, rating: null, rating_count: 0,
+          services_count: db.services.filter((x) => x.coach_id === c.id && x.active !== false).length,
+          locations_count: (db.locations || []).filter((x) => x.coach_id === c.id).length,
+          rules_count: (db.availability_rules || []).filter((x) => x.coach_id === c.id).length, billing: bl };
+      })));
+    };
     return {
       mode: "demo",
       reset: () => { try { store && store.removeItem(KEY); } catch { /* ignore */ } load(); },
@@ -353,6 +386,46 @@
       // ---- back-office
       myCoaches: async () => delay(clone(db.coaches)),
       isPlatformAdmin: async () => delay(true),
+      // ---- console PCW (démo)
+      adminCoaches: () => demoAdminCoaches(),
+      adminDashboard: async () => {
+        const list = await demoAdminCoaches();
+        const bk = (db.bookings || []).filter((b) => ["pending", "confirmed", "completed", "no_show"].includes(b.status));
+        const m0 = new Date(); m0.setDate(1); m0.setHours(0, 0, 0, 0);
+        const m1 = new Date(m0); m1.setMonth(m1.getMonth() - 1);
+        const m2 = new Date(m0); m2.setMonth(m2.getMonth() + 1);
+        const inR = (b, a, z) => new Date(b.starts_at) >= a && new Date(b.starts_at) < z;
+        const bills = list.map((c) => c.billing);
+        return {
+          coaches: { total: list.length, live: list.filter((c) => c.status === "live").length, draft: list.filter((c) => c.status === "draft").length, suspended: list.filter((c) => c.status === "suspended").length },
+          bookings: { month: bk.filter((b) => inR(b, m0, m2)).length, last_month: bk.filter((b) => inR(b, m1, m0)).length, upcoming: bk.filter((b) => new Date(b.starts_at) > new Date()).length },
+          weekly_bookings: [],
+          mrr_cents: bills.filter((b) => ["active", "cancelling"].includes(b.plan_status)).reduce((n, b) => n + b.monthly_cents, 0),
+          overdue: { count: bills.filter((b) => b.plan_status === "overdue").length, cents: bills.filter((b) => b.plan_status === "overdue").reduce((n, b) => n + b.monthly_cents, 0) },
+          waived_setups: bills.filter((b) => b.setup_waived).length,
+          pending_testimonials: (db.coach_testimonials || []).filter((t) => t.status === "pending").length,
+          reported_reviews: 0, due_soon: [], commitment_ending: [],
+          attention: list.filter((c) => c.slug !== "demo").map((c) => ({ coach_id: c.id, name: c.display_name, status: c.status,
+            issues: [c.services_count ? null : "Aucune prestation active", c.locations_count ? null : "Aucun lieu", c.rules_count ? null : "Aucun horaire"].filter(Boolean) })).filter((x) => x.issues.length),
+        };
+      },
+      adminSetBilling: async (coachId, patch) => {
+        db.coach_billing = db.coach_billing || [];
+        let r = db.coach_billing.find((x) => x.coach_id === coachId);
+        if (!r) { r = { coach_id: coachId, plan_status: "pending", live_since: null, commitment_months: 12, setup_fee_cents: 3900, setup_waived: false, setup_paid_at: null, monthly_cents: 7900, paid_until: null, cancel_requested_at: null, notes: null }; db.coach_billing.push(r); }
+        Object.assign(r, patch); save();
+        return delay(clone(r));
+      },
+      adminDeleteCoach: async (coachId) => {
+        const c = db.coaches.find((x) => x.id === coachId);
+        if (!c) throw new ApiError("Coach introuvable.", "NOT_FOUND");
+        if (c.slug === "demo") throw new ApiError("Le coach modèle ne peut pas être supprimé.", "FORBIDDEN");
+        if (c.status === "live") throw new ApiError("Repassez d'abord le site en brouillon ou suspendez-le.", "FORBIDDEN");
+        if ((db.bookings || []).some((b) => b.coach_id === coachId)) throw new ApiError("Ce coach a des réservations : suspendez-le plutôt que de le supprimer.", "FORBIDDEN");
+        db.coaches = db.coaches.filter((x) => x.id !== coachId); save();
+        return delay();
+      },
+      adminResendInvite: async () => delay({ sent: true, kind: "invite", email: "démo" }),
       createCoach: async ({ slug, display_name, city, email, domain }) => {
         slug = String(slug || "").trim().toLowerCase();
         if (!/^[a-z0-9]([a-z0-9-]{1,38}[a-z0-9])$/.test(slug)) throw new ApiError("Adresse invalide : 3 à 40 caractères, lettres minuscules, chiffres et tirets.", "INVALID_INPUT");

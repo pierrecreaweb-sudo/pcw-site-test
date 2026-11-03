@@ -126,6 +126,7 @@
     prestations: { label: "Prestations et lieux", short: "Prestations", icon: "tag", render: viewServices },
     "mon-site": { label: "Mon site", icon: "brush", render: viewSite },
     reglages: { label: "Réglages", icon: "gear", render: viewSettings },
+    pcw: { label: "Console PCW", short: "Console", icon: "chart", render: viewPcw },
   };
   // Menu groupé dans l'ordre d'usage : le quotidien d'abord, puis le suivi de l'activité,
   // puis la vitrine (site et partage), enfin les réglages.
@@ -135,8 +136,9 @@
     { title: "Mon activité", keys: ["statistiques", "avis"] },
     { title: "Ma vitrine", keys: ["partager", "mon-site", "prestations"] },
     { title: "Compte", keys: ["reglages"] },
+    { title: "Plateforme PCW", keys: ["pcw"], admin: true },
   ];
-  const currentView = () => { const h = location.hash.replace("#", ""); return VIEWS[h] ? h : "dashboard"; };
+  const currentView = () => { const h = location.hash.replace("#", ""); return VIEWS[h] && (h !== "pcw" || S.isAdmin) ? h : "dashboard"; };
   window.addEventListener("hashchange", () => { closeDrawer(); render(); window.scrollTo(0, 0); });
 
 
@@ -216,7 +218,7 @@
         <div class="side__brand"><span class="dot"></span><span>${esc(S.coach.display_name.toUpperCase())}</span></div>
         ${S.coaches.length > 1 ? `<select class="coach-switch" id="coach-switch" aria-label="Changer de coach">${S.coaches.map((c) =>
           `<option value="${c.id}" ${c.id === S.coach.id ? "selected" : ""}>${esc(c.display_name)}</option>`).join("")}</select>` : ""}
-        <nav aria-label="Menu">${NAV_GROUPS.map((g) => `${g.title ? `<span class="nav-group">${g.title}</span>` : ""}${g.keys.map(navItem).join("")}`).join("")}</nav>
+        <nav aria-label="Menu">${NAV_GROUPS.filter((g) => !g.admin || S.isAdmin).map((g) => `${g.title ? `<span class="nav-group">${g.title}</span>` : ""}${g.keys.map(navItem).join("")}`).join("")}</nav>
         <div class="side__foot">
           <a href="${siteUrl}" target="_blank" rel="noopener">Voir mon site ↗</a>
           <button type="button" data-action="sign-out">Se déconnecter</button>
@@ -1346,20 +1348,11 @@
             <label class="switch" style="margin-top:14px"><span><b>Apparaître dans l'annuaire PCW</b><small>Les élèves vous trouvent par ville ou par club dans l'annuaire des coachs PCW, avec un lien direct vers votre réservation.${c.status !== "live" ? " Visible dès la mise en ligne de votre site." : ""}</small></span>
               <input type="checkbox" id="s-directory" ${c.directory_listed !== false ? "checked" : ""}></label></section>
           <section class="card" id="pcw-avis"><h2>Votre avis sur PCW Padel Coach</h2><p class="muted" style="margin:0">Chargement…</p></section>
-          ${S.isAdmin ? `<section class="card" id="pcw-avis-admin" style="border-color:var(--accent)"><h2>Avis des coachs <small>visible par l'équipe PCW seulement</small></h2><p class="muted" style="margin:0">Chargement…</p></section>` : ""}
           ${S.isAdmin ? `<section class="card" style="border-color:var(--accent)"><h2>Plateforme PCW <small>visible par l'équipe PCW seulement</small></h2>
             <div class="switch"><span><b>Statut de ce site</b><small>${c.status === "live" ? "Visible et ouvert aux réservations" : "Invisible du public tant qu'il n'est pas en ligne"}</small></span>
               ${c.status === "live" ? `<button type="button" class="btn btn--sm" data-action="set-status" data-status="draft">Repasser en brouillon</button>`
                 : `<button type="button" class="btn btn--sm btn--primary" data-action="set-status" data-status="live">Mettre en ligne</button>`}</div>
-            <form id="new-coach-form" class="form-grid" style="margin-top:12px">
-              <p class="full muted" style="margin:0;font-size:13px">Nouveau client : son site est créé en brouillon à partir du modèle (textes, couleurs, prestations, règles), puis il reçoit un email pour choisir son mot de passe.</p>
-              <label class="field"><span>Nom du coach</span><input type="text" id="nc-name" maxlength="60" placeholder="Emma Roux"></label>
-              <label class="field"><span>Ville</span><input type="text" id="nc-city" maxlength="60" placeholder="Albi"></label>
-              <label class="field"><span>Adresse du site</span><input type="text" id="nc-slug" maxlength="40" placeholder="emma-roux" autocapitalize="off"></label>
-              <label class="field"><span>Email du coach</span><input type="email" id="nc-email" placeholder="emma@exemple.fr"></label>
-              <label class="field"><span>Domaine du site (facultatif)</span><input type="text" id="nc-domain" maxlength="100" placeholder="emma-roux.pcwpadel.fr" autocapitalize="off"></label>
-              <div class="full"><button type="submit" class="btn btn--dark">Créer le coach</button></div>
-            </form></section>` : ""}
+            <p class="muted" style="margin:12px 0 0;font-size:13px">Créer un coach, suivre les abonnements et valider les avis : <a href="#pcw">Console PCW</a>.</p></section>` : ""}
           <section class="card"><h2>Compte</h2><p class="muted" style="margin:0 0 10px">Connecté avec ${esc(S.user.email || "")}</p>
             <div class="btn-row">${S.api.mode !== "demo" ? `<button class="btn" data-action="change-password">Changer de mot de passe</button>` : `<button class="btn" data-action="reset-demo">Réinitialiser la démo</button>`}
             <button class="btn btn--danger" data-action="sign-out">Se déconnecter</button></div></section>
@@ -1369,7 +1362,6 @@
   AFTER.reglages = (page) => {
     bindCalForm(page);
     loadTestimonial(page);
-    if (S.isAdmin) loadTestimonialsAdmin(page);
     if (S.ui.scrollGoogle) { S.ui.scrollGoogle = false; const g = page.querySelector("#google"); if (g) g.scrollIntoView({ block: "start" }); }
     page.querySelector("#rules-form").addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -1380,29 +1372,6 @@
       try { Object.assign(S.coach, await S.api.updateCoach(S.coach.id, patch)); toast("Règles enregistrées"); }
       catch (err) { toast(errMsg(err)); }
     });
-    const nc = page.querySelector("#new-coach-form");
-    if (nc) {
-      const name = nc.querySelector("#nc-name"), slug = nc.querySelector("#nc-slug");
-      name.addEventListener("input", () => {
-        if (slug.dataset.touched) return;
-        slug.value = name.value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
-      });
-      slug.addEventListener("input", () => { slug.dataset.touched = "1"; });
-      nc.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const btn = nc.querySelector("button[type=submit]");
-        btn.disabled = true; btn.textContent = "Création…";
-        try {
-          const r = await S.api.createCoach({ display_name: name.value.trim(), city: nc.querySelector("#nc-city").value.trim(),
-            slug: slug.value.trim(), email: nc.querySelector("#nc-email").value.trim(),
-            domain: nc.querySelector("#nc-domain").value.trim() });
-          S.coaches = await S.api.myCoaches();
-          toast(r.invited ? "Coach créé, invitation envoyée" : "Coach créé en brouillon");
-          await selectCoach(r.coach_id);
-          location.hash = "mon-site";
-        } catch (err) { toast(errMsg(err)); btn.disabled = false; btn.textContent = "Créer le coach"; }
-      });
-    }
     const dir = page.querySelector("#s-directory");
     if (dir) dir.addEventListener("change", async () => {
       try {
@@ -1417,6 +1386,276 @@
       try { Object.assign(S.coach, await S.api.updateCoach(S.coach.id, { notify_email: v || null })); toast("Email enregistré"); }
       catch (err) { toast(errMsg(err)); }
     });
+  };
+
+  // ======================================================= console PCW ===
+  // Page réservée aux administrateurs de la plateforme : tableau de bord, coachs, abonnements, avis.
+  const PLAN = {
+    pending: ["pending", "À démarrer"], active: ["confirmed", "Actif"], overdue: ["cancelled", "En retard"],
+    cancelling: ["pending", "Résiliation demandée"], ended: ["neutral", "Terminé"],
+  };
+  const ST_LABEL = { live: ["confirmed", "En ligne"], draft: ["pending", "Brouillon"], suspended: ["cancelled", "Suspendu"] };
+  const eur0 = (c) => ((c || 0) / 100).toLocaleString("fr-FR", { style: "currency", currency: "EUR", minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  const dFr = (d) => d ? new Date(String(d).length === 10 ? d + "T12:00:00" : d).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }) : "—";
+  const ymdToday = () => new Date().toISOString().slice(0, 10);
+  const addMonthsYmd = (ymd, n) => { const d = new Date(ymd + "T12:00:00"); d.setMonth(d.getMonth() + n); return d.toISOString().slice(0, 10); };
+  const coachSiteUrl = (c) => c.custom_domain ? `https://${c.custom_domain}/` : "";
+  const PCW_TABS = [["overview", "Vue d'ensemble"], ["coaches", "Coachs"], ["billing", "Abonnements"], ["reviews", "Avis des coachs"]];
+
+  function viewPcw() {
+    const tab = S.ui.pcwTab || "overview";
+    return `<div class="page__head"><div><h1>Console PCW</h1><p>Suivi de la plateforme : coachs, abonnements, avis. Visible par l'équipe PCW seulement.</p></div></div>
+      <div class="toolbar"><div class="seg" role="group" aria-label="Sections">${PCW_TABS.map(([k, l]) =>
+        `<button type="button" data-action="pcw-tab" data-tab="${k}" aria-pressed="${tab === k}">${l}</button>`).join("")}</div></div>
+      <div id="pcw-body"><p class="muted">Chargement…</p></div>`;
+  }
+  AFTER.pcw = async (page) => {
+    if (!S.pcw) {
+      try { await loadPcw(); } catch (e) { const b = page.querySelector("#pcw-body"); if (b) b.innerHTML = `<div class="alert alert--err">${esc(errMsg(e))}</div>`; return; }
+    }
+    renderPcwBody();
+  };
+  async function loadPcw() {
+    const [dash, coaches] = await Promise.all([S.api.adminDashboard(), S.api.adminCoaches()]);
+    S.pcw = { dash, coaches };
+  }
+  async function refreshPcw() { try { await loadPcw(); } catch (e) { toast(errMsg(e)); } renderPcwBody(); }
+  function renderPcwBody() {
+    const box = document.getElementById("pcw-body");
+    if (!box || !S.pcw) return;
+    document.querySelectorAll('[data-action="pcw-tab"]').forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tab === (S.ui.pcwTab || "overview"))));
+    const t = S.ui.pcwTab || "overview";
+    box.innerHTML = t === "coaches" ? pcwCoachesHtml() : t === "billing" ? pcwBillingHtml() : t === "reviews"
+      ? `<section class="card" id="pcw-avis-admin"><h2>Avis des coachs</h2><p class="muted" style="margin:0">Chargement…</p></section>` : pcwOverviewHtml();
+    if (t === "reviews") loadTestimonialsAdmin(document);
+    if (t === "coaches") bindNewCoach(box);
+  }
+
+  function pcwOverviewHtml() {
+    const d = S.pcw.dash, c = d.coaches, b = d.bookings;
+    const diff = b.month - b.last_month;
+    const kpi = (label, value, sub, extra = "") => `<div class="kpi ${extra}"><span class="kpi__label">${label}</span><span class="kpi__value">${value}</span><span class="kpi__sub">${sub}</span></div>`;
+    const weeks = d.weekly_bookings || [];
+    const max = Math.max(1, ...weeks.map((w) => w.count));
+    const bars = weeks.length ? `<div style="display:flex;align-items:flex-end;gap:6px;height:90px">${weeks.map((w) =>
+      `<div title="${esc(dFr(w.week))} : ${w.count}" style="flex:1;display:grid;gap:4px;align-items:end;justify-items:center;height:100%"><span class="muted num" style="font-size:11px">${w.count}</span><span style="display:block;width:100%;height:${Math.max(3, Math.round((w.count / max) * 60))}px;background:var(--ball);border-radius:4px"></span></div>`).join("")}</div>
+      <p class="muted" style="margin:6px 0 0;font-size:12px">Réservations par semaine, 8 dernières semaines.</p>` : "";
+    const list = (items, row, empty) => items.length ? `<div class="rows">${items.map(row).join("")}</div>` : `<p class="muted" style="margin:0">${empty}</p>`;
+    const open = (id, title, sub, end) => `<button type="button" class="row" style="grid-template-columns:minmax(0,1fr) auto" data-action="pcw-coach" data-id="${id}">
+      <span class="row__main"><span class="row__title">${esc(title)}</span><span class="row__sub" style="white-space:normal">${sub}</span></span><span class="row__end">${end || ""}</span></button>`;
+    return `<div class="kpis">
+        ${kpi("Coachs en ligne", `${c.live}<small style="font-size:14px;font-weight:600"> / ${c.total}</small>`, `${c.draft} brouillon${c.draft > 1 ? "s" : ""} · ${c.suspended} suspendu${c.suspended > 1 ? "s" : ""}`)}
+        ${kpi("Réservations ce mois", b.month, `${diff >= 0 ? "+" : ""}${diff} vs mois dernier · ${b.upcoming} à venir`)}
+        ${kpi("Revenu mensuel", eur0(d.mrr_cents), "Abonnements actifs")}
+        ${kpi("Impayés", d.overdue.count ? eur0(d.overdue.cents) : "0", d.overdue.count ? `${d.overdue.count} abonnement${d.overdue.count > 1 ? "s" : ""} en retard` : "Rien en retard", d.overdue.count ? "kpi--alert" : "")}
+      </div>
+      <div class="kpis">
+        ${kpi("Mises en ligne offertes", `${d.waived_setups}<small style="font-size:14px;font-weight:600"> / 10</small>`, "Offre des 10 premiers coachs")}
+        <button type="button" class="kpi ${d.pending_testimonials ? "kpi--alert" : ""}" data-action="pcw-tab" data-tab="reviews"><span class="kpi__label">Avis de coachs</span><span class="kpi__value">${d.pending_testimonials}</span><span class="kpi__sub">à valider</span></button>
+        ${kpi("Avis signalés", d.reported_reviews, "Avis d'élèves signalés par les coachs", d.reported_reviews ? "kpi--alert" : "")}
+      </div>
+      <div class="grid grid--2">
+        <section class="card"><h2>À surveiller</h2>${list(d.attention, (a) => open(a.coach_id, a.name, esc(a.issues.join(" · ")), pill(...ST_LABEL[a.status] || ST_LABEL.draft)), "Rien à signaler.")}</section>
+        <div class="grid">
+          <section class="card"><h2>Activité</h2>${bars || `<p class="muted" style="margin:0">Pas encore de données.</p>`}</section>
+          <section class="card"><h2>Échéances à 7 jours</h2>${list(d.due_soon, (x) => open(x.coach_id, x.name, `Payé jusqu'au ${dFr(x.paid_until)}`, pill(...(PLAN[x.plan_status] || PLAN.active))), "Aucune échéance proche.")}</section>
+          <section class="card"><h2>Engagements qui se terminent <small>60 jours</small></h2>${list(d.commitment_ending, (x) => open(x.coach_id, x.name, `Fin d'engagement le ${dFr(x.ends_on)}`, ""), "Aucun engagement proche de son terme.")}</section>
+        </div>
+      </div>`;
+  }
+
+  function pcwCoachesHtml() {
+    const list = S.pcw.coaches;
+    const row = (c) => {
+      const bl = c.billing || {};
+      const flags = [c.invite_pending ? "invitation non acceptée" : "", !c.services_count ? "sans prestation" : "", !c.locations_count ? "sans lieu" : "", !c.rules_count ? "sans horaire" : ""].filter(Boolean);
+      return `<button type="button" class="row" style="grid-template-columns:minmax(0,1fr) auto" data-action="pcw-coach" data-id="${c.id}">
+        <span class="row__main"><span class="row__title">${esc(c.display_name)}${c.city ? ` <span class="muted" style="font-weight:500">· ${esc(c.city)}</span>` : ""}</span>
+          <span class="row__sub">${esc(c.custom_domain || c.slug)} · ${c.bookings_30d} réservation${c.bookings_30d > 1 ? "s" : ""} (30 j)${flags.length ? " · " + esc(flags.join(", ")) : ""}</span></span>
+        <span class="row__end">${pill(...ST_LABEL[c.status] || ST_LABEL.draft)}${pill(...(PLAN[bl.plan_status] || PLAN.pending))}</span></button>`;
+    };
+    return `<div class="toolbar"><button type="button" class="btn btn--primary" data-action="pcw-new">+ Nouveau coach</button></div>
+      <section class="card" id="pcw-new" ${S.ui.pcwNew ? "" : "hidden"}><h2>Nouveau coach</h2>${newCoachFormHtml()}</section>
+      <section class="card">${list.length ? `<div class="rows">${list.map(row).join("")}</div>` : `<div class="empty">Aucun coach.</div>`}</section>`;
+  }
+
+  function newCoachFormHtml() {
+    return `<form id="new-coach-form" class="form-grid">
+      <p class="full muted" style="margin:0;font-size:13px">Le site est créé en brouillon à partir du modèle (textes, couleurs, prestations, règles), puis le coach reçoit un email pour choisir son mot de passe. Pensez à créer l'adresse DNS et le dépôt avant (voir la procédure de mise en ligne).</p>
+      <label class="field"><span>Nom du coach</span><input type="text" id="nc-name" maxlength="60" placeholder="Emma Roux"></label>
+      <label class="field"><span>Ville</span><input type="text" id="nc-city" maxlength="60" placeholder="Albi"></label>
+      <label class="field"><span>Adresse du site</span><input type="text" id="nc-slug" maxlength="40" placeholder="emma-roux" autocapitalize="off"></label>
+      <label class="field"><span>Email du coach</span><input type="email" id="nc-email" placeholder="emma@exemple.fr"></label>
+      <label class="field"><span>Domaine du site (facultatif)</span><input type="text" id="nc-domain" maxlength="100" placeholder="emma-roux.padelcoachs.fr" autocapitalize="off"></label>
+      <div class="full"><button type="submit" class="btn btn--dark">Créer le coach</button></div></form>`;
+  }
+  function bindNewCoach(root) {
+    const nc = root.querySelector("#new-coach-form");
+    if (!nc) return;
+    const name = nc.querySelector("#nc-name"), slug = nc.querySelector("#nc-slug"), dom = nc.querySelector("#nc-domain");
+    name.addEventListener("input", () => {
+      if (slug.dataset.touched) return;
+      slug.value = name.value.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+      if (!dom.dataset.touched) dom.value = slug.value ? `${slug.value}.padelcoachs.fr` : "";
+    });
+    slug.addEventListener("input", () => { slug.dataset.touched = "1"; if (!dom.dataset.touched) dom.value = slug.value ? `${slug.value}.padelcoachs.fr` : ""; });
+    dom.addEventListener("input", () => { dom.dataset.touched = "1"; });
+    nc.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = nc.querySelector("button[type=submit]");
+      btn.disabled = true; btn.textContent = "Création…";
+      try {
+        const r = await S.api.createCoach({ display_name: name.value.trim(), city: nc.querySelector("#nc-city").value.trim(),
+          slug: slug.value.trim(), email: nc.querySelector("#nc-email").value.trim(), domain: dom.value.trim() });
+        S.coaches = await S.api.myCoaches();
+        toast(r.invited ? "Coach créé, invitation envoyée" : "Coach créé en brouillon");
+        S.ui.pcwNew = false;
+        await refreshPcw();
+        pcwCoachDrawer(r.coach_id);
+      } catch (err) { toast(errMsg(err)); btn.disabled = false; btn.textContent = "Créer le coach"; }
+    });
+  }
+
+  function pcwBillingHtml() {
+    const list = S.pcw.coaches.filter((c) => c.slug !== "demo");
+    const d = S.pcw.dash;
+    const row = (c) => {
+      const bl = c.billing || {};
+      const late = bl.paid_until && bl.paid_until < ymdToday() && ["active", "overdue"].includes(bl.plan_status);
+      const setup = bl.setup_waived ? "mise en ligne offerte" : bl.setup_paid_at ? `mise en ligne payée le ${dFr(bl.setup_paid_at)}` : `mise en ligne ${eur0(bl.setup_fee_cents)} à régler`;
+      return `<button type="button" class="row" style="grid-template-columns:minmax(0,1fr) auto" data-action="pcw-billing" data-id="${c.id}">
+        <span class="row__main"><span class="row__title">${esc(c.display_name)}</span>
+          <span class="row__sub">${eur0(bl.monthly_cents)}/mois · ${bl.paid_until ? `payé jusqu'au ${dFr(bl.paid_until)}${late ? " (dépassé)" : ""}` : "aucun paiement noté"} · ${setup}</span></span>
+        <span class="row__end">${pill(...(PLAN[bl.plan_status] || PLAN.pending))}</span></button>`;
+    };
+    return `<div class="kpis kpis--stats">
+        <div class="kpi"><span class="kpi__label">Revenu mensuel</span><span class="kpi__value">${eur0(d.mrr_cents)}</span><span class="kpi__sub">Abonnements actifs</span></div>
+        <div class="kpi ${d.overdue.count ? "kpi--alert" : ""}"><span class="kpi__label">En retard</span><span class="kpi__value">${d.overdue.count ? eur0(d.overdue.cents) : "0"}</span><span class="kpi__sub">${d.overdue.count} abonnement${d.overdue.count > 1 ? "s" : ""}</span></div>
+        <div class="kpi"><span class="kpi__label">Offres de lancement</span><span class="kpi__value">${d.waived_setups} / 10</span><span class="kpi__sub">Mises en ligne offertes</span></div>
+      </div>
+      <p class="muted" style="margin:0 0 10px;font-size:13px">Suivi à la main jusqu'au paiement en ligne (lot 3). Ouvrez un coach pour noter un paiement ou modifier son contrat.</p>
+      <section class="card">${list.length ? `<div class="rows">${list.map(row).join("")}</div>` : `<div class="empty">Aucun coach client.</div>`}</section>`;
+  }
+
+  function pcwCoachDrawer(id, opts = {}) {
+    const c = S.pcw && S.pcw.coaches.find((x) => x.id === id);
+    if (!c) return;
+    const bl = c.billing || {};
+    const check = (ok, label) => `<li style="list-style:none">${ok ? "✓" : "✗"} ${label}</li>`;
+    const siteUrl = coachSiteUrl(c);
+    openDrawer({
+      title: c.display_name, wide: true,
+      body: `${opts.confirmDelete ? `<div class="confirm-box">Supprimer définitivement ${esc(c.display_name)} et toute sa configuration ? Impossible s'il a des réservations ou s'il est en ligne.
+          <div class="btn-row"><button class="btn" data-action="pcw-coach" data-id="${id}">Non</button><button class="btn btn--dark" data-action="pcw-delete" data-id="${id}">Supprimer</button></div></div>` : ""}
+        <dl class="kv">
+          <dt>Statut</dt><dd>${pill(...ST_LABEL[c.status] || ST_LABEL.draft)} ${pill(...(PLAN[bl.plan_status] || PLAN.pending))}</dd>
+          <dt>Site</dt><dd>${siteUrl ? `<a href="${esc(siteUrl)}" target="_blank" rel="noopener">${esc(c.custom_domain)}</a>` : `<span class="muted">Pas de domaine renseigné</span>`}</dd>
+          ${siteUrl ? `<dt>Back-office</dt><dd><a href="${esc(siteUrl)}admin/" target="_blank" rel="noopener">${esc(c.custom_domain)}/admin/</a></dd>` : ""}
+          <dt>Compte</dt><dd>${esc(c.owner_email || "—")}${c.invite_pending ? ` <span class="muted">· invitation non acceptée</span>` : c.last_sign_in_at ? ` <span class="muted">· dernière connexion ${esc(dFr(c.last_sign_in_at))}</span>` : ""}</dd>
+          <dt>Créé le</dt><dd>${esc(dFr(c.created_at))}</dd>
+          <dt>Activité</dt><dd>${c.bookings_30d} réservation${c.bookings_30d > 1 ? "s" : ""} sur 30 j · ${c.bookings_upcoming} à venir · ${c.bookings_total} au total</dd>
+          <dt>Avis élèves</dt><dd>${c.rating_count ? `${c.rating} / 5 (${c.rating_count})` : "Aucun"}</dd>
+        </dl>
+        <h3 style="margin:16px 0 6px">Mise en place</h3>
+        <ul style="margin:0;padding:0">${check(c.services_count, `${c.services_count} prestation${c.services_count > 1 ? "s" : ""} active${c.services_count > 1 ? "s" : ""}`)}${check(c.locations_count, `${c.locations_count} lieu${c.locations_count > 1 ? "x" : ""}`)}${check(c.rules_count, `${c.rules_count} plage${c.rules_count > 1 ? "s" : ""} d'horaires`)}</ul>
+        <h3 style="margin:16px 0 6px">Réglages</h3>
+        <div class="form-grid">
+          <label class="field"><span>Statut du site</span><select id="pf-status">${["draft", "live", "suspended"].map((s) => `<option value="${s}" ${c.status === s ? "selected" : ""}>${ST_LABEL[s][1]}</option>`).join("")}</select></label>
+          <label class="field"><span>Domaine du site</span><input type="text" id="pf-domain" maxlength="100" value="${esc(c.custom_domain || "")}" placeholder="prenom-nom.padelcoachs.fr" autocapitalize="off"></label>
+          <label class="field full"><span>Email des notifications</span><input type="email" id="pf-notify" value="${esc(c.notify_email || "")}"></label>
+          <label class="switch full"><span><b>Présent dans l'annuaire</b></span><input type="checkbox" id="pf-dir" ${c.directory_listed ? "checked" : ""}></label>
+        </div>
+        <div class="btn-row" style="margin-top:14px">
+          <button type="button" class="btn" data-action="pcw-billing" data-id="${id}">Abonnement</button>
+          <button type="button" class="btn" data-action="pcw-resend" data-id="${id}">Renvoyer l'invitation</button>
+          <button type="button" class="btn" data-action="pcw-open-coach" data-id="${id}">Ouvrir son back-office ici</button></div>`,
+      foot: `<button class="btn btn--danger" data-action="pcw-ask-delete" data-id="${id}">Supprimer</button>
+        <button class="btn btn--primary" data-action="pcw-save" data-id="${id}">Enregistrer</button>`,
+    });
+  }
+
+  function pcwBillingDrawer(id) {
+    const c = S.pcw && S.pcw.coaches.find((x) => x.id === id);
+    if (!c) return;
+    const b = c.billing || {};
+    const val = (v) => esc(v || "");
+    const money = (cents) => ((cents || 0) / 100).toString();
+    const ends = b.live_since ? dFr(addMonthsYmd(b.live_since, b.commitment_months || 0)) : "—";
+    openDrawer({
+      title: `Abonnement · ${c.display_name}`, wide: true,
+      body: `<div class="form-grid">
+          <label class="field"><span>État</span><select id="bf-plan">${Object.entries(PLAN).map(([k, v]) => `<option value="${k}" ${b.plan_status === k ? "selected" : ""}>${v[1]}</option>`).join("")}</select></label>
+          <label class="field"><span>Mise en ligne le</span><input type="date" id="bf-live" value="${val(b.live_since)}"></label>
+          <label class="field"><span>Engagement (mois)</span><input type="number" id="bf-commit" min="0" max="60" value="${b.commitment_months ?? 12}"></label>
+          <div class="field"><span>Fin d'engagement</span><div style="padding:10px 0;font-weight:600">${ends}</div></div>
+          <label class="field"><span>Abonnement (€ / mois)</span><input type="number" id="bf-monthly" min="0" step="0.01" value="${money(b.monthly_cents)}"></label>
+          <label class="field"><span>Payé jusqu'au</span><input type="date" id="bf-paid" value="${val(b.paid_until)}"></label>
+          <label class="field"><span>Mise en ligne (€)</span><input type="number" id="bf-setup" min="0" step="0.01" value="${money(b.setup_fee_cents)}"></label>
+          <label class="field"><span>Mise en ligne payée le</span><input type="date" id="bf-setup-paid" value="${val(b.setup_paid_at)}"></label>
+          <label class="switch full"><span><b>Mise en ligne offerte</b><small>Offre des 10 premiers coachs</small></span><input type="checkbox" id="bf-waived" ${b.setup_waived ? "checked" : ""}></label>
+          <label class="field full"><span>Résiliation demandée le</span><input type="date" id="bf-cancel" value="${val(b.cancel_requested_at)}"></label>
+          <label class="field full"><span>Notes internes</span><textarea id="bf-notes" rows="3" maxlength="2000">${esc(b.notes || "")}</textarea></label>
+        </div>`,
+      foot: `<button class="btn" data-action="pcw-paid-month" data-id="${id}">Noter 1 mois payé</button>
+        <button class="btn btn--primary" data-action="pcw-save-billing" data-id="${id}">Enregistrer</button>`,
+    });
+  }
+
+  const gv = (id) => (document.getElementById(id) || {}).value || "";
+  const PCW_ACTIONS = {
+    "pcw-tab": async (el) => {
+      S.ui.pcwTab = el.dataset.tab;
+      if (currentView() !== "pcw") { location.hash = "pcw"; return; }
+      if (["overview", "billing"].includes(S.ui.pcwTab)) await refreshPcw(); else renderPcwBody();
+    },
+    "pcw-new": () => { S.ui.pcwNew = !S.ui.pcwNew; const s = document.getElementById("pcw-new"); if (s) s.hidden = !S.ui.pcwNew; },
+    "pcw-coach": (el) => pcwCoachDrawer(el.dataset.id),
+    "pcw-ask-delete": (el) => pcwCoachDrawer(el.dataset.id, { confirmDelete: true }),
+    "pcw-billing": (el) => pcwBillingDrawer(el.dataset.id),
+    "pcw-open-coach": async (el) => { closeDrawer(); await selectCoach(el.dataset.id); location.hash = "dashboard"; },
+    "pcw-save": async (el) => {
+      const id = el.dataset.id;
+      const domain = gv("pf-domain").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+      const notify = gv("pf-notify").trim().toLowerCase();
+      if (domain && !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(domain)) return toast("Domaine invalide (exemple : emma-roux.padelcoachs.fr).");
+      if (notify && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(notify)) return toast("Email invalide.");
+      const patch = { status: gv("pf-status"), custom_domain: domain || null, notify_email: notify || null, directory_listed: document.getElementById("pf-dir").checked };
+      try {
+        const row = await S.api.updateCoach(id, patch);
+        const mine = S.coaches.find((x) => x.id === id);
+        if (mine) Object.assign(mine, row);
+        if (S.coach && S.coach.id === id) Object.assign(S.coach, row);
+        toast("Fiche enregistrée"); closeDrawer(); await refreshPcw();
+      } catch (err) { toast(/duplicate|unique|23505/i.test(errMsg(err)) ? "Ce domaine est déjà pris." : errMsg(err)); }
+    },
+    "pcw-resend": async (el) => {
+      try { const r = await S.api.adminResendInvite(el.dataset.id); toast(r.kind === "reset" ? `Lien de connexion envoyé à ${r.email}` : `Invitation renvoyée à ${r.email}`); }
+      catch (err) { toast(errMsg(err)); }
+    },
+    "pcw-delete": async (el) => {
+      try {
+        await S.api.adminDeleteCoach(el.dataset.id);
+        S.coaches = await S.api.myCoaches();
+        if (S.coach && S.coach.id === el.dataset.id) await selectCoach(S.coaches[0].id);
+        toast("Coach supprimé"); closeDrawer(); await refreshPcw();
+      } catch (err) { toast(errMsg(err)); closeDrawer(); }
+    },
+    "pcw-save-billing": async (el) => {
+      const cents = (id) => Math.round((parseFloat(gv(id).replace(",", ".")) || 0) * 100);
+      const patch = { plan_status: gv("bf-plan"), live_since: gv("bf-live"), commitment_months: parseInt(gv("bf-commit"), 10) || 0,
+        monthly_cents: cents("bf-monthly"), paid_until: gv("bf-paid"), setup_fee_cents: cents("bf-setup"), setup_paid_at: gv("bf-setup-paid"),
+        setup_waived: document.getElementById("bf-waived").checked, cancel_requested_at: gv("bf-cancel"), notes: gv("bf-notes") };
+      try { await S.api.adminSetBilling(el.dataset.id, patch); toast("Abonnement enregistré"); closeDrawer(); await refreshPcw(); }
+      catch (err) { toast(errMsg(err)); }
+    },
+    "pcw-paid-month": async (el) => {
+      const base = gv("bf-paid") && gv("bf-paid") > ymdToday() ? gv("bf-paid") : ymdToday();
+      const patch = { paid_until: addMonthsYmd(base, 1) };
+      if (["pending", "overdue"].includes(gv("bf-plan"))) patch.plan_status = "active";
+      if (!gv("bf-live")) patch.live_since = ymdToday();
+      try { await S.api.adminSetBilling(el.dataset.id, patch); toast(`Payé jusqu'au ${dFr(patch.paid_until)}`); closeDrawer(); await refreshPcw(); }
+      catch (err) { toast(errMsg(err)); }
+    },
   };
 
   // ============================================= avis du coach sur PCW ===
@@ -2206,6 +2445,7 @@
     catch { toast("Sélectionnez le texte puis copiez-le."); }
   }
   const ACTIONS = {
+    ...PCW_ACTIONS,
     "sign-out": async () => { await S.api.signOut(); S.user = null; S.coach = null; closeDrawer(); render(); },
     "reset-demo": async () => { S.api.reset(); await afterSignIn(); toast("Démo réinitialisée"); },
     "magic-link": async () => {
@@ -2249,6 +2489,7 @@
         <a href="#partager">${icon("share")} Partager ma page</a><a href="#mon-site">${icon("brush")} Mon site</a><a href="#prestations">${icon("tag")} Prestations et lieux</a>
         <span class="sheet-menu__group">Compte</span>
         <a href="#reglages">${icon("gear")} Réglages</a>
+        ${S.isAdmin ? `<span class="sheet-menu__group">Plateforme PCW</span><a href="#pcw">${icon("chart")} Console PCW</a>` : ""}
         <a href="../index.html?c=${encodeURIComponent(S.coach.slug)}" target="_blank" rel="noopener">${icon("ext")} Voir mon site</a>
         <button type="button" data-action="sign-out">${icon("out")} Se déconnecter</button></div>`,
     }),
