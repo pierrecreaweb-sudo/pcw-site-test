@@ -221,6 +221,7 @@
         <nav aria-label="Menu">${NAV_GROUPS.filter((g) => !g.admin || S.isAdmin).map((g) => `${g.title ? `<span class="nav-group">${g.title}</span>` : ""}${g.keys.map(navItem).join("")}`).join("")}</nav>
         <div class="side__foot">
           <a href="${siteUrl}" target="_blank" rel="noopener">Voir mon site ↗</a>
+          <a href="../aide.html" target="_blank" rel="noopener">Aide et contact ↗</a>
           <button type="button" data-action="sign-out">Se déconnecter</button>
         </div>
       </aside>
@@ -1416,8 +1417,8 @@
     renderPcwBody();
   };
   async function loadPcw() {
-    const [dash, coaches] = await Promise.all([S.api.adminDashboard(), S.api.adminCoaches()]);
-    S.pcw = { dash, coaches };
+    const [dash, coaches, invoices, settings] = await Promise.all([S.api.adminDashboard(), S.api.adminCoaches(), S.api.adminInvoices(), S.api.adminGetSettings()]);
+    S.pcw = { dash, coaches, invoices, settings };
   }
   async function refreshPcw() { try { await loadPcw(); } catch (e) { toast(errMsg(e)); } renderPcwBody(); }
   function renderPcwBody() {
@@ -1534,7 +1535,83 @@
         <div class="kpi"><span class="kpi__label">Offres de lancement</span><span class="kpi__value">${d.waived_setups} / 10</span><span class="kpi__sub">Mises en ligne offertes</span></div>
       </div>
       <p class="muted" style="margin:0 0 10px;font-size:13px">Suivi à la main jusqu'au paiement en ligne (lot 3). Ouvrez un coach pour noter un paiement ou modifier son contrat.</p>
-      <section class="card">${list.length ? `<div class="rows">${list.map(row).join("")}</div>` : `<div class="empty">Aucun coach client.</div>`}</section>`;
+      <section class="card">${list.length ? `<div class="rows">${list.map(row).join("")}</div>` : `<div class="empty">Aucun coach client.</div>`}</section>
+      ${pcwInvoicesHtml()}`;
+  }
+
+  const INV_ST = { issued: ["pending", "À payer"], paid: ["confirmed", "Payée"], cancelled: ["neutral", "Annulée"] };
+  function pcwInvoicesHtml() {
+    const inv = S.pcw.invoices || [];
+    const st = S.pcw.settings || {};
+    const row = (i) => `<div class="row" style="grid-template-columns:minmax(0,1fr) auto;cursor:default">
+        <span class="row__main"><span class="row__title">${esc(i.number)} · ${esc(i.coach_name || "")}</span>
+          <span class="row__sub">${eur0(i.total_cents)} · émise le ${dFr(i.issued_on)} · échéance ${dFr(i.due_on)}${i.paid_on ? ` · payée le ${dFr(i.paid_on)}` : ""}</span></span>
+        <span class="row__end">${pill(...INV_ST[i.status])}<span class="btn-row" style="gap:6px">
+          <button type="button" class="btn btn--sm" data-action="inv-print" data-id="${i.id}">Voir / imprimer</button>
+          ${i.status === "issued" ? `<button type="button" class="btn btn--sm btn--primary" data-action="inv-paid" data-id="${i.id}">Marquer payée</button><button type="button" class="btn btn--sm" data-action="inv-cancel" data-id="${i.id}">Annuler</button>` : ""}</span></span></div>`;
+    return `<h2 style="margin:22px 0 10px;font-size:18px">Factures</h2>
+      <section class="card">${inv.length ? `<div class="rows">${inv.map(row).join("")}</div>` : `<div class="empty">Aucune facture. Ouvrez un coach dans la liste ci-dessus, puis « Facturer ».</div>`}</section>
+      <section class="card" style="margin-top:12px"><h2>Coordonnées de paiement <small>imprimées sur les factures</small></h2>
+        <div class="form-grid">
+          <label class="field"><span>IBAN</span><input type="text" id="st-iban" maxlength="60" value="${esc(st.iban || "")}" autocomplete="off"></label>
+          <label class="field"><span>BIC</span><input type="text" id="st-bic" maxlength="20" value="${esc(st.bic || "")}" autocomplete="off"></label>
+          <label class="field"><span>Banque (facultatif)</span><input type="text" id="st-bank" maxlength="80" value="${esc(st.bank_name || "")}"></label>
+          <label class="field"><span>Mention libre (facultatif)</span><input type="text" id="st-note" maxlength="200" value="${esc(st.payment_note || "")}" placeholder="Ex. : référence à indiquer au virement"></label>
+          <div class="full"><button type="button" class="btn" data-action="pcw-save-settings">Enregistrer</button></div></div></section>`;
+  }
+
+  // Facture imprimable : une page A4 sobre, ouverte dans un nouvel onglet (Imprimer, puis « Enregistrer au format PDF »).
+  function invoiceHtml(i, settings) {
+    const st = settings || {};
+    const cl = i.client || {};
+    const lines = (i.lines || []).map((l) => `<tr><td>${esc(l.label)}</td><td class="r">${l.qty}</td><td class="r">${eur0(l.unit_cents)}</td><td class="r">${eur0(l.qty * l.unit_cents)}</td></tr>`).join("");
+    const bank = st.iban ? `<p><b>Paiement par virement</b><br>IBAN : ${esc(st.iban)}${st.bic ? `<br>BIC : ${esc(st.bic)}` : ""}${st.bank_name ? `<br>Banque : ${esc(st.bank_name)}` : ""}<br>Référence à indiquer : ${esc(i.number)}${st.payment_note ? `<br>${esc(st.payment_note)}` : ""}</p>` : `<p><b>Paiement</b> : selon le moyen indiqué au contrat d'abonnement. Référence à indiquer : ${esc(i.number)}.</p>`;
+    return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Facture ${esc(i.number)}</title><style>
+      @page { size: A4; margin: 18mm; } body { font: 14px/1.5 system-ui, Arial, sans-serif; color: #111; margin: 0; padding: 24px; max-width: 760px; margin-inline: auto; }
+      h1 { font-size: 26px; margin: 0 0 4px; } .top { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+      .box { flex: 1; } .muted { color: #555; } table { width: 100%; border-collapse: collapse; margin: 22px 0 8px; } th, td { padding: 8px 6px; border-bottom: 1px solid #ccc; text-align: left; }
+      th { background: #f3f3f3; } .r { text-align: right; } .tot { font-size: 18px; font-weight: 700; text-align: right; margin: 8px 0 22px; }
+      .paid { display: inline-block; border: 2px solid #1b7f3b; color: #1b7f3b; font-weight: 700; padding: 4px 10px; border-radius: 6px; transform: rotate(-3deg); margin-bottom: 12px; }
+      .legal { font-size: 12px; color: #444; border-top: 1px solid #ccc; padding-top: 10px; margin-top: 24px; } .bar { position: sticky; top: 0; background: #fff; padding-bottom: 10px; }
+      @media print { .bar { display: none; } body { padding: 0; } }</style></head><body>
+      <div class="bar"><button onclick="window.print()">Imprimer / enregistrer en PDF</button></div>
+      <div class="top"><div class="box"><b>Pierre Créa Web</b><br>Pierre Orriols, entrepreneur individuel<br>150 route d'Agen, 82170 Grisolles<br>SIRET 108 153 982 00013<br>pierre.creaweb@gmail.com · 06 45 33 43 28</div>
+        <div class="box"><b>Facturé à</b><br>${esc(cl.name || "")}${cl.address ? `<br>${esc(cl.address).replace(/\n/g, "<br>")}` : ""}${cl.siret ? `<br>SIRET ${esc(cl.siret)}` : ""}${cl.email ? `<br>${esc(cl.email)}` : ""}</div></div>
+      <h1>Facture ${esc(i.number)}</h1>
+      <p class="muted">Date d'émission : ${dFr(i.issued_on)} · Échéance : ${dFr(i.due_on)}</p>
+      ${i.status === "paid" ? `<div class="paid">ACQUITTÉE le ${dFr(i.paid_on)}</div>` : i.status === "cancelled" ? `<div class="paid" style="color:#a33;border-color:#a33">ANNULÉE</div>` : ""}
+      <table><thead><tr><th>Désignation</th><th class="r">Qté</th><th class="r">Prix unitaire</th><th class="r">Total</th></tr></thead><tbody>${lines}</tbody></table>
+      <div class="tot">Total à payer : ${eur0(i.total_cents)}</div>
+      <p class="muted">TVA non applicable, article 293 B du Code général des impôts.</p>
+      ${i.status === "paid" ? "" : bank}
+      <div class="legal">Contrat d'abonnement PCW Padel Coach et conditions générales de vente (pcwpadel.fr/cgv.html). Pas d'escompte pour paiement anticipé. En cas de retard de paiement : pénalités au taux de trois fois le taux d'intérêt légal et indemnité forfaitaire de 40 € pour frais de recouvrement (articles L441-10 et D441-5 du Code de commerce).${i.notes ? `<br>${esc(i.notes)}` : ""}</div>
+      </body></html>`;
+  }
+  function openInvoice(i) {
+    const w = window.open("", "_blank");
+    if (!w) return toast("Autorisez les fenêtres pop-up pour afficher la facture.");
+    w.document.open(); w.document.write(invoiceHtml(i, (S.pcw && S.pcw.settings) || {})); w.document.close();
+  }
+
+  async function invoiceDrawer(coachId, kind) {
+    const c = S.pcw.coaches.find((x) => x.id === coachId);
+    if (!c) return;
+    let sc = {};
+    try { sc = ((await S.api.getSiteContent(coachId)) || {}).content || {}; } catch { /* champs vides */ }
+    const b = c.billing || {};
+    const label = kind === "setup" ? `Mise en place du site : ${eur0(b.setup_fee_cents)}` : `Mensualité : ${eur0(b.monthly_cents)}`;
+    openDrawer({
+      title: `Facturer · ${c.display_name}`,
+      body: `<p class="muted" style="margin-top:0">${esc(label)}. Vérifiez l'identité du client : elle est figée sur la facture.</p>
+        <div class="form-grid">
+          <label class="field full"><span>Nom ou raison sociale</span><input type="text" id="iv-name" maxlength="120" value="${esc(sc.legal_name || c.display_name)}"></label>
+          <label class="field full"><span>Adresse</span><textarea id="iv-addr" rows="2" maxlength="250" placeholder="Rue, code postal, ville">${esc(sc.legal_address || "")}</textarea></label>
+          <label class="field"><span>SIRET</span><input type="text" id="iv-siret" maxlength="25" value="${esc(sc.siret || "")}"></label>
+          <label class="field"><span>Email</span><input type="email" id="iv-email" maxlength="120" value="${esc(c.notify_email || c.owner_email || "")}"></label>
+          ${kind === "monthly" ? `<label class="field full"><span>Début de la période (facultatif)</span><input type="date" id="iv-start"><small class="muted">Laissez vide : la période suit la dernière payée.</small></label>` : ""}
+        </div>`,
+      foot: `<button class="btn btn--primary" data-action="inv-create" data-id="${coachId}" data-kind="${kind}">Créer la facture</button>`,
+    });
   }
 
   function pcwCoachDrawer(id, opts = {}) {
@@ -1596,7 +1673,9 @@
           <label class="field full"><span>Résiliation demandée le</span><input type="date" id="bf-cancel" value="${val(b.cancel_requested_at)}"></label>
           <label class="field full"><span>Notes internes</span><textarea id="bf-notes" rows="3" maxlength="2000">${esc(b.notes || "")}</textarea></label>
         </div>`,
-      foot: `<button class="btn" data-action="pcw-paid-month" data-id="${id}">Noter 1 mois payé</button>
+      foot: `${b.setup_waived || b.setup_paid_at ? "" : `<button class="btn" data-action="inv-new" data-kind="setup" data-id="${id}">Facturer la mise en place</button>`}
+        <button class="btn" data-action="inv-new" data-kind="monthly" data-id="${id}">Facturer le mois</button>
+        <button class="btn" data-action="pcw-paid-month" data-id="${id}">Noter 1 mois payé</button>
         <button class="btn btn--primary" data-action="pcw-save-billing" data-id="${id}">Enregistrer</button>`,
     });
   }
@@ -1609,6 +1688,31 @@
       if (["overview", "billing"].includes(S.ui.pcwTab)) await refreshPcw(); else renderPcwBody();
     },
     "pcw-new": () => { S.ui.pcwNew = !S.ui.pcwNew; const s = document.getElementById("pcw-new"); if (s) s.hidden = !S.ui.pcwNew; },
+    "inv-new": (el) => invoiceDrawer(el.dataset.id, el.dataset.kind),
+    "inv-create": async (el) => {
+      const client = { name: gv("iv-name").trim(), address: gv("iv-addr").trim(), siret: gv("iv-siret").trim(), email: gv("iv-email").trim() };
+      if (!client.name) return toast("Indiquez le nom du client.");
+      try {
+        const inv = await S.api.adminCreateInvoice(el.dataset.id, el.dataset.kind, client, gv("iv-start") || null, null);
+        closeDrawer(); await refreshPcw(); toast(`Facture ${inv.number} créée`); openInvoice(inv);
+      } catch (err) { toast(errMsg(err)); }
+    },
+    "inv-print": (el) => { const i = (S.pcw.invoices || []).find((x) => x.id === el.dataset.id); if (i) openInvoice(i); },
+    "inv-paid": async (el) => {
+      try { await S.api.adminMarkInvoicePaid(el.dataset.id, null); toast("Facture payée : l'abonnement est à jour"); await refreshPcw(); }
+      catch (err) { toast(errMsg(err)); }
+    },
+    "inv-cancel": async (el) => {
+      if (el.dataset.confirm !== "1") { el.dataset.confirm = "1"; el.textContent = "Confirmer"; return; }
+      try { await S.api.adminCancelInvoice(el.dataset.id, null); toast("Facture annulée"); await refreshPcw(); }
+      catch (err) { toast(errMsg(err)); }
+    },
+    "pcw-save-settings": async () => {
+      try {
+        S.pcw.settings = await S.api.adminSetSettings({ iban: gv("st-iban"), bic: gv("st-bic"), bank_name: gv("st-bank"), payment_note: gv("st-note") });
+        toast("Coordonnées de paiement enregistrées");
+      } catch (err) { toast(errMsg(err)); }
+    },
     "pcw-coach": (el) => pcwCoachDrawer(el.dataset.id),
     "pcw-ask-delete": (el) => pcwCoachDrawer(el.dataset.id, { confirmDelete: true }),
     "pcw-billing": (el) => pcwBillingDrawer(el.dataset.id),
@@ -1638,7 +1742,7 @@
         S.coaches = await S.api.myCoaches();
         if (S.coach && S.coach.id === el.dataset.id) await selectCoach(S.coaches[0].id);
         toast("Coach supprimé"); closeDrawer(); await refreshPcw();
-      } catch (err) { toast(errMsg(err)); closeDrawer(); }
+      } catch (err) { toast(/foreign key|23503|invoices/i.test(errMsg(err)) ? "Ce coach a des factures (à conserver 10 ans) : suspendez-le plutôt que de le supprimer." : errMsg(err)); closeDrawer(); }
     },
     "pcw-save-billing": async (el) => {
       const cents = (id) => Math.round((parseFloat(gv(id).replace(",", ".")) || 0) * 100);
@@ -2491,6 +2595,7 @@
         <a href="#reglages">${icon("gear")} Réglages</a>
         ${S.isAdmin ? `<span class="sheet-menu__group">Plateforme PCW</span><a href="#pcw">${icon("chart")} Console PCW</a>` : ""}
         <a href="../index.html?c=${encodeURIComponent(S.coach.slug)}" target="_blank" rel="noopener">${icon("ext")} Voir mon site</a>
+        <a href="../aide.html" target="_blank" rel="noopener">${icon("ext")} Aide et contact</a>
         <button type="button" data-action="sign-out">${icon("out")} Se déconnecter</button></div>`,
     }),
     "new-booking": (el) => newBookingDrawer({ player_id: el.dataset.playerId }),

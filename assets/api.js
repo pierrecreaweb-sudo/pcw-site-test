@@ -88,6 +88,13 @@
       adminCoaches: async () => unwrap(await sb.rpc("admin_coaches")) || [],
       adminSetBilling: async (coachId, patch) => unwrap(await sb.rpc("admin_set_billing", { p_coach_id: coachId, p_patch: patch })),
       adminDeleteCoach: async (coachId) => { unwrap(await sb.rpc("admin_delete_coach", { p_coach_id: coachId })); },
+      adminInvoices: async (coachId) => unwrap(await sb.rpc("admin_invoices", { p_coach_id: coachId || null })) || [],
+      adminCreateInvoice: async (coachId, kind, client, periodStart, notes) => unwrap(await sb.rpc("admin_create_invoice",
+        { p_coach_id: coachId, p_kind: kind, p_client: client, p_period_start: periodStart || null, p_notes: notes || null })),
+      adminMarkInvoicePaid: async (id, paidOn) => unwrap(await sb.rpc("admin_mark_invoice_paid", { p_id: id, p_paid_on: paidOn || null })),
+      adminCancelInvoice: async (id, reason) => unwrap(await sb.rpc("admin_cancel_invoice", { p_id: id, p_reason: reason || null })),
+      adminGetSettings: async () => unwrap(await sb.rpc("admin_get_settings")) || {},
+      adminSetSettings: async (patch) => unwrap(await sb.rpc("admin_set_settings", { p_patch: patch })),
       adminResendInvite: async (coachId) => {
         const { data, error } = await sb.functions.invoke("create-coach", { body: { action: "resend_invite", coach_id: coachId } });
         if (error) {
@@ -425,6 +432,57 @@
         db.coaches = db.coaches.filter((x) => x.id !== coachId); save();
         return delay();
       },
+      adminInvoices: async (coachId) => {
+        const names = Object.fromEntries(db.coaches.map((c) => [c.id, c.display_name]));
+        return delay(clone((db.invoices || []).filter((i) => !coachId || i.coach_id === coachId).map((i) => ({ ...i, coach_name: names[i.coach_id] || "" }))
+          .sort((a, b) => b.number.localeCompare(a.number))));
+      },
+      adminCreateInvoice: async (coachId, kind, client, periodStart, notes) => {
+        db.invoices = db.invoices || []; db.coach_billing = db.coach_billing || [];
+        let b = db.coach_billing.find((x) => x.coach_id === coachId);
+        if (!b) { b = { coach_id: coachId, plan_status: "pending", live_since: null, commitment_months: 12, setup_fee_cents: 3900, setup_waived: false, setup_paid_at: null, monthly_cents: 7900, paid_until: null, cancel_requested_at: null, notes: null }; db.coach_billing.push(b); }
+        if (!String((client && client.name) || "").trim()) throw new ApiError("Nom du client obligatoire sur la facture.", "INVALID_INPUT");
+        const today = new Date().toISOString().slice(0, 10);
+        const addM = (ymd, n) => { const d = new Date(ymd + "T12:00:00"); d.setMonth(d.getMonth() + n); return d.toISOString().slice(0, 10); };
+        const dayBefore = (ymd) => { const d = new Date(ymd + "T12:00:00"); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); };
+        let lines, total, due = today, ps = null, pe = null;
+        if (kind === "setup") {
+          if (b.setup_waived) throw new ApiError("La mise en place est offerte à ce coach : pas de facture.", "FORBIDDEN");
+          if (b.setup_paid_at || db.invoices.some((i) => i.coach_id === coachId && i.kind === "setup" && i.status !== "cancelled")) throw new ApiError("Une facture de mise en place existe déjà.", "DUPLICATE");
+          lines = [{ label: "Mise en place du site PCW Padel Coach", qty: 1, unit_cents: b.setup_fee_cents }]; total = b.setup_fee_cents;
+        } else {
+          ps = periodStart || (b.paid_until ? new Date(new Date(b.paid_until + "T12:00:00").getTime() + 864e5).toISOString().slice(0, 10) : b.live_since || today);
+          pe = dayBefore(addM(ps, 1));
+          if (db.invoices.some((i) => i.coach_id === coachId && i.kind === "monthly" && i.status !== "cancelled" && i.period_start === ps)) throw new ApiError("Une facture existe déjà pour cette période.", "DUPLICATE");
+          const f = (y) => y.split("-").reverse().join("/");
+          lines = [{ label: `Abonnement PCW Padel Coach, du ${f(ps)} au ${f(pe)}`, qty: 1, unit_cents: b.monthly_cents }]; total = b.monthly_cents; due = ps > today ? ps : today;
+        }
+        const year = new Date().getFullYear();
+        const n = db.invoices.filter((i) => i.number.startsWith(`FA-${year}-`)).length + 1;
+        const inv = { id: P.uuid(), number: `FA-${year}-${String(n).padStart(4, "0")}`, coach_id: coachId, kind, issued_on: today, due_on: due, period_start: ps, period_end: pe,
+          lines, total_cents: total, client: { name: client.name.trim(), address: client.address || null, siret: client.siret || null, email: client.email || null },
+          status: "issued", paid_on: null, notes: notes || null, created_at: new Date().toISOString() };
+        db.invoices.push(inv); save();
+        return delay(clone({ ...inv, coach_name: (db.coaches.find((c) => c.id === coachId) || {}).display_name }));
+      },
+      adminMarkInvoicePaid: async (id, paidOn) => {
+        const i = (db.invoices || []).find((x) => x.id === id);
+        if (!i) throw new ApiError("Facture introuvable.", "NOT_FOUND");
+        if (i.status === "cancelled") throw new ApiError("Cette facture est annulée.", "FORBIDDEN");
+        i.status = "paid"; i.paid_on = paidOn || new Date().toISOString().slice(0, 10);
+        const b = db.coach_billing.find((x) => x.coach_id === i.coach_id);
+        if (b && i.kind === "setup") b.setup_paid_at = i.paid_on;
+        if (b && i.kind === "monthly") { if (!b.paid_until || b.paid_until < i.period_end) b.paid_until = i.period_end; b.live_since = b.live_since || i.period_start; if (["pending", "overdue"].includes(b.plan_status)) b.plan_status = "active"; }
+        save(); return delay(clone(i));
+      },
+      adminCancelInvoice: async (id, reason) => {
+        const i = (db.invoices || []).find((x) => x.id === id);
+        if (!i) throw new ApiError("Facture introuvable.", "NOT_FOUND");
+        if (i.status === "paid") throw new ApiError("Une facture payée ne s'annule pas : établissez un avoir.", "FORBIDDEN");
+        i.status = "cancelled"; if (reason) i.notes = reason; save(); return delay(clone(i));
+      },
+      adminGetSettings: async () => delay(clone(db.platform_settings || {})),
+      adminSetSettings: async (patch) => { db.platform_settings = { ...(db.platform_settings || {}), ...patch }; save(); return delay(clone(db.platform_settings)); },
       adminResendInvite: async () => delay({ sent: true, kind: "invite", email: "démo" }),
       createCoach: async ({ slug, display_name, city, email, domain }) => {
         slug = String(slug || "").trim().toLowerCase();
