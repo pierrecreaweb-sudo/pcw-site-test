@@ -353,7 +353,7 @@
       // ---- back-office
       myCoaches: async () => delay(clone(db.coaches)),
       isPlatformAdmin: async () => delay(true),
-      createCoach: async ({ slug, display_name, city, email }) => {
+      createCoach: async ({ slug, display_name, city, email, domain }) => {
         slug = String(slug || "").trim().toLowerCase();
         if (!/^[a-z0-9]([a-z0-9-]{1,38}[a-z0-9])$/.test(slug)) throw new ApiError("Adresse invalide : 3 à 40 caractères, lettres minuscules, chiffres et tirets.", "INVALID_INPUT");
         if (!String(display_name || "").trim()) throw new ApiError("Nom du coach obligatoire.", "INVALID_INPUT");
@@ -362,7 +362,7 @@
         const srcSite = db.site_content.find((x) => x.coach_id === src.id);
         const id = P.uuid();
         const name = display_name.trim(), cityTxt = (city || "").trim();
-        db.coaches.push({ ...clone(src), id, slug, display_name: name, city: cityTxt || null, status: "draft", custom_domain: null,
+        db.coaches.push({ ...clone(src), id, slug, display_name: name, city: cityTxt || null, status: "draft", custom_domain: String(domain || "").trim().toLowerCase() || null,
                           notify_email: email || null, ical_token: P.uuid() });
         db.site_content.push({ coach_id: id,
           theme: { ...clone(srcSite.theme), logo_text: name.toUpperCase(), logo_url: null, hero_image: null, portrait_image: null },

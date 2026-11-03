@@ -1357,6 +1357,7 @@
               <label class="field"><span>Ville</span><input type="text" id="nc-city" maxlength="60" placeholder="Albi"></label>
               <label class="field"><span>Adresse du site</span><input type="text" id="nc-slug" maxlength="40" placeholder="emma-roux" autocapitalize="off"></label>
               <label class="field"><span>Email du coach</span><input type="email" id="nc-email" placeholder="emma@exemple.fr"></label>
+              <label class="field"><span>Domaine du site (facultatif)</span><input type="text" id="nc-domain" maxlength="100" placeholder="emma-roux.pcwpadel.fr" autocapitalize="off"></label>
               <div class="full"><button type="submit" class="btn btn--dark">Créer le coach</button></div>
             </form></section>` : ""}
           <section class="card"><h2>Compte</h2><p class="muted" style="margin:0 0 10px">Connecté avec ${esc(S.user.email || "")}</p>
@@ -1393,7 +1394,8 @@
         btn.disabled = true; btn.textContent = "Création…";
         try {
           const r = await S.api.createCoach({ display_name: name.value.trim(), city: nc.querySelector("#nc-city").value.trim(),
-            slug: slug.value.trim(), email: nc.querySelector("#nc-email").value.trim() });
+            slug: slug.value.trim(), email: nc.querySelector("#nc-email").value.trim(),
+            domain: nc.querySelector("#nc-domain").value.trim() });
           S.coaches = await S.api.myCoaches();
           toast(r.invited ? "Coach créé, invitation envoyée" : "Coach créé en brouillon");
           await selectCoach(r.coach_id);
