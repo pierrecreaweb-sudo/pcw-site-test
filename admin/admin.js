@@ -136,10 +136,16 @@
     { title: "Mon activité", keys: ["statistiques", "avis"] },
     { title: "Ma vitrine", keys: ["partager", "mon-site", "prestations"] },
     { title: "Compte", keys: ["reglages"] },
-    { title: "Plateforme PCW", keys: ["pcw"], admin: true },
   ];
   const currentView = () => { const h = location.hash.replace("#", ""); return VIEWS[h] && (h !== "pcw" || S.isAdmin) ? h : "dashboard"; };
-  window.addEventListener("hashchange", () => { closeDrawer(); render(); window.scrollTo(0, 0); });
+  const inConsole = () => Boolean(S.user && S.isAdmin && currentView() === "pcw");
+  async function ensureCoach() {
+    if (!S.user || S.coach || !S.coaches || !S.coaches.length || inConsole()) return;
+    let saved = null;
+    try { saved = localStorage.getItem("pcw-coach-id"); } catch { saved = null; }
+    await selectCoach((S.coaches.find((c) => c.id === saved) || S.coaches[0]).id);
+  }
+  window.addEventListener("hashchange", async () => { closeDrawer(); await ensureCoach(); render(); window.scrollTo(0, 0); });
 
 
   // ============================================================= messages ===
@@ -198,6 +204,7 @@
     if (!S.api) return;
     if (S.recovery) return renderRecovery();
     if (!S.user) return renderLogin();
+    if (inConsole()) return renderConsole();
     if (!S.coach) {
       app.innerHTML = `<div class="login"><div class="login__card"><h1>Aucun site rattaché</h1>
         <p>Votre compte n'est relié à aucun site de coach pour le moment. Contactez Pierre Créa Web.</p>
@@ -218,7 +225,8 @@
         <div class="side__brand"><span class="dot"></span><span>${esc(S.coach.display_name.toUpperCase())}</span></div>
         ${S.coaches.length > 1 ? `<select class="coach-switch" id="coach-switch" aria-label="Changer de coach">${S.coaches.map((c) =>
           `<option value="${c.id}" ${c.id === S.coach.id ? "selected" : ""}>${esc(c.display_name)}</option>`).join("")}</select>` : ""}
-        <nav aria-label="Menu">${NAV_GROUPS.filter((g) => !g.admin || S.isAdmin).map((g) => `${g.title ? `<span class="nav-group">${g.title}</span>` : ""}${g.keys.map(navItem).join("")}`).join("")}</nav>
+        ${S.isAdmin && S.api.mode !== "demo" ? `<a class="navlink" href="#pcw" style="margin:0 0 10px;background:rgba(255,255,255,.08)">${icon("left")}<span>Console PCW</span></a>` : ""}
+        <nav aria-label="Menu">${NAV_GROUPS.map((g) => `${g.title ? `<span class="nav-group">${g.title}</span>` : ""}${g.keys.map(navItem).join("")}`).join("")}</nav>
         <div class="side__foot">
           <a href="${siteUrl}" target="_blank" rel="noopener">Voir mon site ↗</a>
           <a href="../aide.html" target="_blank" rel="noopener">Aide et contact ↗</a>
@@ -290,6 +298,13 @@
     if (!S.user) return render();
     S.coaches = await S.api.myCoaches();
     try { S.isAdmin = await S.api.isPlatformAdmin(); } catch { S.isAdmin = false; }
+    // L'équipe PCW arrive sur la console (vue d'ensemble de tous les coachs), sans choisir de coach.
+    const hash = location.hash.replace("#", "");
+    if (S.isAdmin && S.api.mode !== "demo" && (!hash || hash === "pcw")) {
+      S.coach = null; S.pcw = null;
+      history.replaceState(null, "", "#pcw");
+      return render();
+    }
     let saved = null;
     try { saved = localStorage.getItem("pcw-coach-id"); } catch { saved = null; }
     const pick = S.coaches.find((c) => c.id === saved) || S.coaches[0];
@@ -1403,12 +1418,46 @@
   const coachSiteUrl = (c) => c.custom_domain ? `https://${c.custom_domain}/` : "";
   const PCW_TABS = [["overview", "Vue d'ensemble"], ["coaches", "Coachs"], ["billing", "Abonnements"], ["reviews", "Avis des coachs"]];
 
+  const PCW_TITLES = { overview: ["Vue d'ensemble", "Tous vos coachs en un coup d'œil."], coaches: ["Coachs", "Créer un coach, ouvrir sa fiche, entrer dans son espace."],
+    billing: ["Abonnements et factures", "Suivi des abonnements, factures et paiements."], reviews: ["Avis des coachs", "Avis sur PCW Padel Coach à valider avant publication."] };
   function viewPcw() {
+    const [t, sub] = PCW_TITLES[S.ui.pcwTab || "overview"];
+    return `<div class="page__head"><div><h1>${t}</h1><p>${sub}</p></div></div><div id="pcw-body"><p class="muted">Chargement…</p></div>`;
+  }
+  // Espace réservé à l'équipe PCW : aucune donnée de coach n'est chargée tant qu'on n'en ouvre pas un.
+  function renderConsole() {
     const tab = S.ui.pcwTab || "overview";
-    return `<div class="page__head"><div><h1>Console PCW</h1><p>Suivi de la plateforme : coachs, abonnements, avis. Visible par l'équipe PCW seulement.</p></div></div>
-      <div class="toolbar"><div class="seg" role="group" aria-label="Sections">${PCW_TABS.map(([k, l]) =>
-        `<button type="button" data-action="pcw-tab" data-tab="${k}" aria-pressed="${tab === k}">${l}</button>`).join("")}</div></div>
-      <div id="pcw-body"><p class="muted">Chargement…</p></div>`;
+    const d = S.pcw && S.pcw.dash;
+    const badgeFor = (k) => k === "reviews" && d && d.pending_testimonials ? `<span class="badge">${d.pending_testimonials}</span>` : "";
+    const items = [["overview", "Vue d'ensemble", "home"], ["coaches", "Coachs", "users"], ["billing", "Abonnements", "list"], ["reviews", "Avis des coachs", "star"]];
+    const link = ([k, l, ic]) => `<a class="navlink" href="#pcw" data-action="pcw-tab" data-tab="${k}" ${tab === k ? 'aria-current="page"' : ""}>${icon(ic)}<span>${l}</span>${badgeFor(k)}</a>`;
+    const tabBtn = ([k, l, ic]) => `<a class="tab" href="#pcw" data-action="pcw-tab" data-tab="${k}" ${tab === k ? 'aria-current="page"' : ""}>${icon(ic)}<span>${k === "overview" ? "Ensemble" : k === "reviews" ? "Avis" : l}</span>${badgeFor(k)}</a>`;
+    app.innerHTML = `<div class="shell">
+      <aside class="side">
+        <div class="side__brand"><span class="dot"></span><span>PCW PADEL COACH</span></div>
+        <nav aria-label="Menu"><span class="nav-group">Console PCW</span>${items.map(link).join("")}
+          <span class="nav-group">Entrer dans le site d'un coach</span>
+          <select class="coach-switch" id="open-coach" aria-label="Ouvrir le site d'un coach"><option value="">Choisir un coach…</option>${(S.coaches || []).map((c) =>
+            `<option value="${c.id}">${esc(c.display_name)}</option>`).join("")}</select></nav>
+        <div class="side__foot">
+          <a href="https://pcwpadel.fr/" target="_blank" rel="noopener">Page de vente pcwpadel.fr ↗</a>
+          <span class="muted" style="padding:6px 12px;font-size:12px;opacity:.7">${esc((S.user && S.user.email) || "")}</span>
+          <button type="button" data-action="sign-out">Se déconnecter</button>
+        </div>
+      </aside>
+      <main class="main"><div class="page" id="page"></div></main>
+      <nav class="tabbar" aria-label="Menu">${items.map(tabBtn).join("")}</nav>
+    </div>`;
+    const page = document.getElementById("page");
+    page.innerHTML = viewPcw();
+    AFTER.pcw(page);
+    const sw = document.getElementById("open-coach");
+    if (sw) sw.addEventListener("change", async () => { if (sw.value) await enterCoach(sw.value); });
+  }
+  async function enterCoach(id) {
+    closeDrawer();
+    history.pushState(null, "", "#dashboard");
+    await selectCoach(id);
   }
   AFTER.pcw = async (page) => {
     if (!S.pcw) {
@@ -1424,7 +1473,6 @@
   function renderPcwBody() {
     const box = document.getElementById("pcw-body");
     if (!box || !S.pcw) return;
-    document.querySelectorAll('[data-action="pcw-tab"]').forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tab === (S.ui.pcwTab || "overview"))));
     const t = S.ui.pcwTab || "overview";
     box.innerHTML = t === "coaches" ? pcwCoachesHtml() : t === "billing" ? pcwBillingHtml() : t === "reviews"
       ? `<section class="card" id="pcw-avis-admin"><h2>Avis des coachs</h2><p class="muted" style="margin:0">Chargement…</p></section>` : pcwOverviewHtml();
@@ -1645,7 +1693,7 @@
         <div class="btn-row" style="margin-top:14px">
           <button type="button" class="btn" data-action="pcw-billing" data-id="${id}">Abonnement</button>
           <button type="button" class="btn" data-action="pcw-resend" data-id="${id}">Renvoyer l'invitation</button>
-          <button type="button" class="btn" data-action="pcw-open-coach" data-id="${id}">Ouvrir son back-office ici</button></div>`,
+          <button type="button" class="btn" data-action="pcw-open-coach" data-id="${id}">Entrer dans son espace</button></div>`,
       foot: `<button class="btn btn--danger" data-action="pcw-ask-delete" data-id="${id}">Supprimer</button>
         <button class="btn btn--primary" data-action="pcw-save" data-id="${id}">Enregistrer</button>`,
     });
@@ -1684,8 +1732,10 @@
   const PCW_ACTIONS = {
     "pcw-tab": async (el) => {
       S.ui.pcwTab = el.dataset.tab;
+      closeDrawer();
       if (currentView() !== "pcw") { location.hash = "pcw"; return; }
-      if (["overview", "billing"].includes(S.ui.pcwTab)) await refreshPcw(); else renderPcwBody();
+      render();
+      if (["overview", "billing"].includes(S.ui.pcwTab) && S.pcw) refreshPcw();
     },
     "pcw-new": () => { S.ui.pcwNew = !S.ui.pcwNew; const s = document.getElementById("pcw-new"); if (s) s.hidden = !S.ui.pcwNew; },
     "inv-new": (el) => invoiceDrawer(el.dataset.id, el.dataset.kind),
@@ -1716,7 +1766,7 @@
     "pcw-coach": (el) => pcwCoachDrawer(el.dataset.id),
     "pcw-ask-delete": (el) => pcwCoachDrawer(el.dataset.id, { confirmDelete: true }),
     "pcw-billing": (el) => pcwBillingDrawer(el.dataset.id),
-    "pcw-open-coach": async (el) => { closeDrawer(); await selectCoach(el.dataset.id); location.hash = "dashboard"; },
+    "pcw-open-coach": (el) => enterCoach(el.dataset.id),
     "pcw-save": async (el) => {
       const id = el.dataset.id;
       const domain = gv("pf-domain").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
@@ -2550,7 +2600,7 @@
   }
   const ACTIONS = {
     ...PCW_ACTIONS,
-    "sign-out": async () => { await S.api.signOut(); S.user = null; S.coach = null; closeDrawer(); render(); },
+    "sign-out": async () => { await S.api.signOut(); S.user = null; S.coach = null; S.pcw = null; S.isAdmin = false; closeDrawer(); render(); },
     "reset-demo": async () => { S.api.reset(); await afterSignIn(); toast("Démo réinitialisée"); },
     "magic-link": async () => {
       const email = (document.getElementById("l-email") || {}).value || "";
@@ -2593,7 +2643,7 @@
         <a href="#partager">${icon("share")} Partager ma page</a><a href="#mon-site">${icon("brush")} Mon site</a><a href="#prestations">${icon("tag")} Prestations et lieux</a>
         <span class="sheet-menu__group">Compte</span>
         <a href="#reglages">${icon("gear")} Réglages</a>
-        ${S.isAdmin ? `<span class="sheet-menu__group">Plateforme PCW</span><a href="#pcw">${icon("chart")} Console PCW</a>` : ""}
+        ${S.isAdmin && S.api.mode !== "demo" ? `<span class="sheet-menu__group">Plateforme PCW</span><a href="#pcw">${icon("left")} Retour à la console PCW</a>` : ""}
         <a href="../index.html?c=${encodeURIComponent(S.coach.slug)}" target="_blank" rel="noopener">${icon("ext")} Voir mon site</a>
         <a href="../aide.html" target="_blank" rel="noopener">${icon("ext")} Aide et contact</a>
         <button type="button" data-action="sign-out">${icon("out")} Se déconnecter</button></div>`,
