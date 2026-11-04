@@ -9,7 +9,7 @@
   const S = {
     api: null, user: null, coaches: [], coach: null, loading: false,
     services: [], locations: [], rules: [], media: [], messages: [], timeOff: [], players: [], testimonials: [], site: null, bookings: [],
-    reviews: [], busy: [], calImport: null, allBookings: null, allLoadedAt: 0,
+    reviews: [], stages: [], stageRegs: [], packs: [], playerPacks: [], smsOn: false, smsUsed: 0, busy: [], calImport: null, allBookings: null, allLoadedAt: 0,
     isAdmin: false,
     ui: { resFilter: "upcoming", resQuery: "", playerQuery: "", weekStart: null },
     recovery: false,
@@ -38,6 +38,7 @@
     out: '<path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 16l-4-4 4-4M6 12h11"/>',
     chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
     star: '<path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.9l-5.2 2.8 1-5.9-4.3-4.1 5.9-.8z"/>',
+    flag: '<path d="M5 21V4M5 4h12l-2 4 2 4H5"/>',
     share: '<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5"/>',
   };
   const icon = (n) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
@@ -104,6 +105,10 @@
     ]);
     Object.assign(S, { services, locations, rules, timeOff, players, testimonials, site, media, messages: messages.reverse() });
     S.reviews = await S.api.list("reviews", id, "created_at").catch(() => []);
+    const opt = (t, o) => S.api.list(t, id, o).catch(() => []);
+    [S.stages, S.stageRegs, S.packs, S.playerPacks] = await Promise.all([opt("stages", "starts_at"), opt("stage_registrations", "created_at"), opt("packs", "position,name"), opt("player_packs", "created_at")]);
+    S.smsOn = await S.api.smsAvailable().catch(() => false);
+    S.smsUsed = S.api.smsUsage ? await S.api.smsUsage(id).catch(() => 0) : 0;
     await reloadCalendar();
     S.allBookings = null;
     await loadBookings();
@@ -120,6 +125,7 @@
     dashboard: { label: "Accueil", icon: "home", render: viewDashboard },
     reservations: { label: "Réservations", icon: "list", render: viewReservations },
     agenda: { label: "Agenda", icon: "cal", render: viewAgenda },
+    stages: { label: "Stages", icon: "flag", render: viewStages },
     joueurs: { label: "Joueurs", icon: "users", render: viewPlayers },
     statistiques: { label: "Statistiques", short: "Stats", icon: "chart", render: viewStats },
     avis: { label: "Avis", icon: "star", render: viewReviews },
@@ -135,7 +141,7 @@
   // puis la vitrine (site et partage), enfin les réglages.
   const NAV_GROUPS = [
     { title: null, keys: ["dashboard"] },
-    { title: "Au quotidien", keys: ["reservations", "agenda", "messages", "joueurs"] },
+    { title: "Au quotidien", keys: ["reservations", "agenda", "stages", "messages", "joueurs"] },
     { title: "Mon activité", keys: ["statistiques", "avis"] },
     { title: "Ma vitrine", keys: ["partager", "mon-site", "prestations"] },
     { title: "Compte", keys: ["factures", "reglages"] },
@@ -512,6 +518,7 @@
           ${p.id ? `<button class="btn btn--sm" style="margin-top:10px" data-player="${p.id}">Fiche joueur</button>` : ""}
         </section>
         ${b.player_message ? `<div><div class="muted" style="font-size:13px;font-weight:700;margin-bottom:4px">Message du joueur</div><p style="margin:0">${esc(b.player_message)}</p></div>` : ""}
+        ${bookingPackHtml(b)}
         <label class="field"><span>Notes privées</span><textarea id="b-notes" placeholder="Visible par vous seul : exercices travaillés, objectifs…">${esc(b.coach_notes || "")}</textarea></label>
         <div id="move-zone"></div>`,
       foot: `${actions}<button class="btn" data-action="save-notes" data-id="${b.id}">Enregistrer les notes</button>`,
@@ -790,7 +797,8 @@
           <div class="rows">${S.locations.map((l) => `<button type="button" class="row" style="grid-template-columns:minmax(0,1fr) auto" data-action="edit-location" data-id="${l.id}">
             <span class="row__main"><span class="row__title">${esc(l.name)}</span><span class="row__sub">${esc(l.address || "Adresse non renseignée")}</span><span class="row__sub">Rétrocession : ${esc(retroLabel(l))}</span></span>
             <span class="muted">Modifier</span></button>`).join("") || `<div class="empty">Ajoutez les clubs où vous donnez vos cours.</div>`}</div></section>
-      </div>`;
+      </div>
+      ${packsCard()}`;
   }
 
   function serviceDrawer(id, confirmDelete) {
@@ -881,6 +889,195 @@
     } catch (e) { toast(errMsg(e)); }
   }
 
+  // ================================================================ stages ===
+  const REG_ST = { pending: ["pending", "À confirmer"], confirmed: ["confirmed", "Confirmée"], cancelled: ["cancelled", "Annulée"] };
+  const stageRegs = (id) => S.stageRegs.filter((r) => r.stage_id === id);
+  const stageTaken = (id) => stageRegs(id).filter((r) => r.status !== "cancelled").reduce((n, r) => n + (r.party_size || 1), 0);
+  const stageWhen = (s) => {
+    const a = P.fmtDate(s.starts_at, tz(), "short"), b = P.fmtDate(s.ends_at, tz(), "short");
+    return a === b ? `${a}, ${hm(s.starts_at)} – ${hm(s.ends_at)}` : `Du ${a} (${hm(s.starts_at)}) au ${b} (${hm(s.ends_at)})`;
+  };
+  function stageRow(s) {
+    const taken = stageTaken(s.id), waiting = stageRegs(s.id).filter((r) => r.status === "pending").length;
+    return `<button type="button" class="row" style="grid-template-columns:minmax(0,1fr) auto" data-action="edit-stage" data-id="${s.id}">
+      <span class="row__main"><span class="row__title">${esc(s.title)} ${s.published ? "" : pill("neutral", "Masqué")}${waiting ? " " + pill("pending", waiting + " à confirmer") : ""}</span>
+        <span class="row__sub">${esc(stageWhen(s))}</span>
+        <span class="row__sub">${taken} / ${s.capacity} places prises · ${s.price_cents ? euros(s.price_cents) : "Prix sur demande"}${s.block_agenda ? " · agenda bloqué" : ""}</span></span>
+      <span class="muted">Ouvrir</span></button>`;
+  }
+  function viewStages() {
+    const now = Date.now();
+    const sorted = [...S.stages].sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+    const up = sorted.filter((s) => new Date(s.ends_at) > now), past = sorted.filter((s) => new Date(s.ends_at) <= now).reverse();
+    return `<div class="page__head"><div><h1>Stages</h1><p>Vos périodes de stage : elles bloquent votre agenda et les joueurs s'inscrivent depuis votre site.</p></div>
+        <div class="btn-row"><button class="btn btn--primary" data-action="edit-stage">${icon("plus")} Nouveau stage</button></div></div>
+      <section class="card"><h2>À venir</h2>${up.length ? `<div class="rows">${up.map(stageRow).join("")}</div>`
+        : `<div class="empty">Aucun stage prévu. Créez-en un : il apparaît sur votre site avec un bouton d'inscription.</div>`}</section>
+      ${past.length ? `<section class="card"><h2>Passés</h2><div class="rows">${past.slice(0, 20).map(stageRow).join("")}</div></section>` : ""}`;
+  }
+  function stageDrawer(id, confirmDelete) {
+    const d0 = P.addDays(todayYmd(), 7);
+    const s = id ? S.stages.find((x) => x.id === id) : { title: "", description: "", starts_at: P.zonedToUtc(d0, "09:00", tz()).toISOString(), ends_at: P.zonedToUtc(d0, "17:00", tz()).toISOString(), location_id: null, price_cents: 0, capacity: 8, level: "", block_agenda: true, published: true, registration_open: true };
+    if (!s) return;
+    const regs = id ? stageRegs(id) : [];
+    const taken = id ? stageTaken(id) : 0;
+    const regHtml = id ? `<section class="card" style="padding:14px"><h2 style="font-size:15px;margin-bottom:8px">Inscriptions <small>${taken} / ${s.capacity} places prises</small></h2>
+      ${regs.length ? `<div class="rows">${regs.map((r) => `<div class="row" style="grid-template-columns:minmax(0,1fr) auto;align-items:start">
+        <span class="row__main"><span class="row__title">${esc(`${r.first_name} ${r.last_name || ""}`.trim())} · ${r.party_size} pers. ${pill(...REG_ST[r.status])} ${r.payment_status === "paid" ? pill("confirmed", "Payé") : ""}</span>
+          <span class="row__sub"><a href="tel:${esc(String(r.phone).replace(/\s/g, ""))}">${esc(r.phone)}</a> · <span style="user-select:all">${esc(r.email)}</span></span>
+          ${r.message ? `<span class="row__sub">« ${esc(r.message)} »</span>` : ""}</span>
+        <span class="btn-row" style="flex-wrap:wrap;justify-content:flex-end">
+          ${r.status !== "confirmed" ? `<button class="btn btn--sm btn--primary" data-action="reg-set" data-id="${r.id}" data-status="confirmed">Confirmer</button>` : ""}
+          ${r.status !== "cancelled" ? `<button class="btn btn--sm" data-action="reg-set" data-id="${r.id}" data-status="cancelled">Annuler</button>` : `<button class="btn btn--sm" data-action="reg-set" data-id="${r.id}" data-status="pending">Rétablir</button>`}
+          <button class="btn btn--sm" data-action="reg-pay" data-id="${r.id}">${r.payment_status === "paid" ? "Non payé" : "Payé"}</button></span></div>`).join("")}</div>`
+        : `<div class="empty" style="padding:10px 0">Aucune inscription pour l'instant.</div>`}</section>` : "";
+    openDrawer({
+      title: id ? "Modifier le stage" : "Nouveau stage",
+      body: `${confirmDelete ? `<div class="confirm-box">Supprimer « ${esc(s.title)} » ? Les inscriptions associées sont supprimées aussi. Pour le retirer du site sans le supprimer, décochez « Visible ».
+          <div class="btn-row"><button class="btn" data-action="edit-stage" data-id="${id}">Non, garder</button><button class="btn btn--dark" data-action="delete-stage" data-id="${id}">Oui, supprimer</button></div></div>` : ""}
+        <form class="form-grid" id="stage-form" onsubmit="return false">
+          <label class="field full"><span>Titre</span><input type="text" id="st-title" maxlength="120" value="${esc(s.title)}" placeholder="Stage d'été – 3 jours"></label>
+          <label class="field full"><span>Description</span><textarea id="st-desc" maxlength="2000" placeholder="Programme, public, matériel à prévoir…">${esc(s.description || "")}</textarea></label>
+          <label class="field"><span>Début : date</span><input type="date" id="st-sd" value="${P.localYmd(new Date(s.starts_at), tz())}"></label>
+          <label class="field"><span>Début : heure</span><input type="time" id="st-st" step="900" value="${P.localHm(new Date(s.starts_at), tz())}"></label>
+          <label class="field"><span>Fin : date</span><input type="date" id="st-ed" value="${P.localYmd(new Date(s.ends_at), tz())}"></label>
+          <label class="field"><span>Fin : heure</span><input type="time" id="st-et" step="900" value="${P.localHm(new Date(s.ends_at), tz())}"></label>
+          <label class="field"><span>Lieu</span><select id="st-loc"><option value="">Non précisé</option>${S.locations.map((l) => `<option value="${l.id}" ${l.id === s.location_id ? "selected" : ""}>${esc(l.name)}</option>`).join("")}</select></label>
+          <label class="field"><span>Niveau</span><input type="text" id="st-level" maxlength="80" value="${esc(s.level || "")}" placeholder="Tous niveaux"></label>
+          <label class="field"><span>Prix par personne (€)</span><input type="number" id="st-price" min="0" step="1" inputmode="decimal" value="${(s.price_cents / 100).toString()}"></label>
+          <label class="field"><span>Nombre de places</span><input type="number" id="st-cap" min="1" max="60" value="${s.capacity}"></label>
+          <label class="switch full"><span><b>Bloquer mon agenda</b><small>Aucune réservation normale pendant le stage.</small></span><input type="checkbox" id="st-block" ${s.block_agenda ? "checked" : ""}></label>
+          <label class="switch full"><span><b>Visible sur mon site</b><small>Décochez pour le préparer sans le publier.</small></span><input type="checkbox" id="st-pub" ${s.published ? "checked" : ""}></label>
+          <label class="switch full"><span><b>Inscriptions ouvertes</b><small>Décochez quand c'est complet ou clos.</small></span><input type="checkbox" id="st-open" ${s.registration_open ? "checked" : ""}></label>
+          <p class="muted full" style="margin:0;font-size:13px">Paiement en ligne des stages : <b>prochainement disponible</b>. Pour l'instant, vous encaissez vous-même et cochez « Payé ».</p>
+        </form>${regHtml}`,
+      foot: `<button class="btn btn--primary" data-action="save-stage" data-id="${id || ""}">Enregistrer</button>${id ? `<button class="btn btn--danger" data-action="ask-delete-stage" data-id="${id}">Supprimer</button>` : ""}`,
+    });
+  }
+  async function saveStage(id) {
+    const v = (x) => document.getElementById(x);
+    const title = v("st-title").value.trim();
+    if (title.length < 2) return toast("Donnez un titre au stage.");
+    if (!v("st-sd").value || !v("st-st").value || !v("st-ed").value || !v("st-et").value) return toast("Indiquez les dates et heures de début et de fin.");
+    const start = P.zonedToUtc(v("st-sd").value, v("st-st").value, tz()), end = P.zonedToUtc(v("st-ed").value, v("st-et").value, tz());
+    if (!(end > start)) return toast("La fin doit être après le début.");
+    const price = Math.round(parseFloat(String(v("st-price").value || "0").replace(",", ".")) * 100);
+    if (!(price >= 0)) return toast("Prix invalide.");
+    const cap = Math.min(60, Math.max(1, parseInt(v("st-cap").value, 10) || 1));
+    const row = { title, description: v("st-desc").value.trim() || null, starts_at: start.toISOString(), ends_at: end.toISOString(),
+      location_id: v("st-loc").value || null, level: v("st-level").value.trim() || null, price_cents: price, capacity: cap,
+      block_agenda: v("st-block").checked, published: v("st-pub").checked, registration_open: v("st-open").checked };
+    try {
+      if (id) { const r = await S.api.update("stages", id, row); S.stages[S.stages.findIndex((x) => x.id === id)] = r; }
+      else S.stages.push(await S.api.insert("stages", { ...row, coach_id: S.coach.id }));
+      await reloadCalendar();
+      closeDrawer(); toast(row.block_agenda ? "Stage enregistré, agenda bloqué" : "Stage enregistré"); render();
+    } catch (e) { toast(errMsg(e)); }
+  }
+
+  // ================================================================= packs ===
+  const packLeft = (pp) => pp.sessions_total - pp.sessions_used;
+  const packExpired = (pp) => pp.expires_at && pp.expires_at < todayYmd();
+  const packsOf = (playerId) => S.playerPacks.filter((pp) => pp.player_id === playerId);
+  function packsCard() {
+    const list = [...S.packs].sort((a, b) => a.position - b.position);
+    return `<section class="card" id="s-packs"><h2>Packs de séances <button class="btn btn--sm" data-action="edit-pack">${icon("plus")} Ajouter</button></h2>
+      <p class="muted" style="margin:0 0 10px;font-size:14px">Ex. « 10 séances à 450 € ». Vous vendez le pack à un joueur depuis sa fiche ; chaque séance terminée est décomptée automatiquement.</p>
+      <div class="rows">${list.map((k) => `<button type="button" class="row" style="grid-template-columns:minmax(0,1fr) auto" data-action="edit-pack" data-id="${k.id}">
+        <span class="row__main"><span class="row__title">${esc(k.name)} ${k.active ? "" : pill("neutral", "Masqué")}</span>
+          <span class="row__sub">${k.sessions_count} séances · ${euros(k.price_cents)}${k.valid_days ? ` · valable ${k.valid_days} jours` : ""}</span></span><span class="muted">Modifier</span></button>`).join("")
+        || `<div class="empty">Aucun pack. Proposez des lots de séances à tarif dégressif.</div>`}</div>
+      <p class="muted" style="margin:12px 0 0;font-size:13px">Paiement en ligne des packs : <b>prochainement disponible</b>.</p></section>`;
+  }
+  function packDrawer(id, confirmDelete) {
+    const k = id ? S.packs.find((x) => x.id === id) : { name: "", description: "", sessions_count: 10, price_cents: 45000, valid_days: 365, service_id: null, active: true };
+    if (!k) return;
+    openDrawer({
+      title: id ? "Modifier le pack" : "Nouveau pack",
+      body: `${confirmDelete ? `<div class="confirm-box">Supprimer « ${esc(k.name)} » ? Les packs déjà vendus à des joueurs restent valables.
+          <div class="btn-row"><button class="btn" data-action="edit-pack" data-id="${id}">Non, garder</button><button class="btn btn--dark" data-action="delete-pack" data-id="${id}">Oui, supprimer</button></div></div>` : ""}
+        <form class="form-grid" onsubmit="return false">
+          <label class="field full"><span>Nom</span><input type="text" id="pk-name" maxlength="100" value="${esc(k.name)}" placeholder="Pack 10 séances"></label>
+          <label class="field full"><span>Description</span><textarea id="pk-desc" maxlength="500">${esc(k.description || "")}</textarea></label>
+          <label class="field"><span>Nombre de séances</span><input type="number" id="pk-count" min="2" max="100" value="${k.sessions_count}"></label>
+          <label class="field"><span>Prix total (€)</span><input type="number" id="pk-price" min="0" step="1" inputmode="decimal" value="${(k.price_cents / 100).toString()}"></label>
+          <label class="field"><span>Validité (jours)</span><input type="number" id="pk-days" min="1" max="1095" value="${k.valid_days || ""}" placeholder="Sans limite"></label>
+          <label class="field"><span>Prestation concernée</span><select id="pk-svc"><option value="">Toutes</option>${S.services.map((s) => `<option value="${s.id}" ${s.id === k.service_id ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></label>
+          <label class="switch full"><span><b>Visible sur mon site</b><small>Les visiteurs peuvent demander ce pack.</small></span><input type="checkbox" id="pk-active" ${k.active ? "checked" : ""}></label>
+        </form>`,
+      foot: `<button class="btn btn--primary" data-action="save-pack" data-id="${id || ""}">Enregistrer</button>${id ? `<button class="btn btn--danger" data-action="ask-delete-pack" data-id="${id}">Supprimer</button>` : ""}`,
+    });
+  }
+  async function savePack(id) {
+    const v = (x) => document.getElementById(x);
+    const name = v("pk-name").value.trim();
+    if (name.length < 2) return toast("Donnez un nom au pack.");
+    const count = parseInt(v("pk-count").value, 10);
+    if (!(count >= 2 && count <= 100)) return toast("Le pack doit contenir entre 2 et 100 séances.");
+    const price = Math.round(parseFloat(String(v("pk-price").value || "0").replace(",", ".")) * 100);
+    if (!(price >= 0)) return toast("Prix invalide.");
+    const days = v("pk-days").value ? parseInt(v("pk-days").value, 10) : null;
+    if (days !== null && !(days >= 1 && days <= 1095)) return toast("Validité : entre 1 et 1095 jours.");
+    const row = { name, description: v("pk-desc").value.trim() || null, sessions_count: count, price_cents: price, valid_days: days, service_id: v("pk-svc").value || null, active: v("pk-active").checked };
+    try {
+      if (id) { const r = await S.api.update("packs", id, row); S.packs[S.packs.findIndex((x) => x.id === id)] = r; }
+      else S.packs.push(await S.api.insert("packs", { ...row, coach_id: S.coach.id, position: S.packs.length }));
+      closeDrawer(); toast("Pack enregistré"); render();
+    } catch (e) { toast(errMsg(e)); }
+  }
+  function sellPackDrawer(playerId) {
+    const p = playerById(playerId);
+    const list = S.packs.filter((k) => k.active);
+    if (!list.length) { toast("Créez d'abord un pack dans « Prestations et lieux »."); return; }
+    const k0 = list[0];
+    openDrawer({
+      title: `Vendre un pack à ${fullName(p)}`,
+      body: `<form class="form-grid" onsubmit="return false">
+        <label class="field full"><span>Pack</span><select id="sp-pack">${list.map((k) => `<option value="${k.id}">${esc(k.name)} · ${k.sessions_count} séances · ${euros(k.price_cents)}</option>`).join("")}</select></label>
+        <label class="field"><span>Prix réglé (€)</span><input type="number" id="sp-price" min="0" step="1" inputmode="decimal" value="${(k0.price_cents / 100).toString()}"></label>
+        <label class="field"><span>Valable jusqu'au</span><input type="date" id="sp-exp" value="${k0.valid_days ? P.addDays(todayYmd(), k0.valid_days) : ""}"></label>
+        <label class="switch full"><span><b>Déjà payé</b><small>Cochez si le joueur vous a réglé le pack.</small></span><input type="checkbox" id="sp-paid"></label>
+      </form>`,
+      onMount: (el) => {
+        el.querySelector("#sp-pack").addEventListener("change", (e) => {
+          const k = S.packs.find((x) => x.id === e.target.value);
+          el.querySelector("#sp-price").value = (k.price_cents / 100).toString();
+          el.querySelector("#sp-exp").value = k.valid_days ? P.addDays(todayYmd(), k.valid_days) : "";
+        });
+      },
+      foot: `<button class="btn btn--primary" data-action="do-sell-pack" data-player-id="${playerId}">Enregistrer la vente</button><button class="btn" data-player="${playerId}">Retour</button>`,
+    });
+  }
+  async function doSellPack(playerId) {
+    const k = S.packs.find((x) => x.id === document.getElementById("sp-pack").value);
+    const price = Math.round(parseFloat(String(document.getElementById("sp-price").value || "0").replace(",", ".")) * 100);
+    if (!(price >= 0)) return toast("Prix invalide.");
+    try {
+      const r = await S.api.insert("player_packs", { coach_id: S.coach.id, player_id: playerId, pack_id: k.id, name: k.name, sessions_total: k.sessions_count, sessions_used: 0,
+        price_cents: price, payment_status: document.getElementById("sp-paid").checked ? "paid" : "unpaid", expires_at: document.getElementById("sp-exp").value || null });
+      S.playerPacks.push(r);
+      toast("Pack vendu"); playerDrawer(playerId); render();
+    } catch (e) { toast(errMsg(e)); }
+  }
+  function playerPacksHtml(playerId) {
+    const list = packsOf(playerId);
+    return `<section class="card" style="padding:14px"><h2 style="font-size:15px;margin-bottom:8px">Packs de séances <button class="btn btn--sm" data-action="sell-pack" data-player-id="${playerId}">${icon("plus")} Vendre</button></h2>
+      ${list.length ? `<div class="rows">${[...list].reverse().map((pp) => `<div class="row" style="grid-template-columns:minmax(0,1fr) auto;align-items:center">
+        <span class="row__main"><span class="row__title">${esc(pp.name)} ${packExpired(pp) ? pill("cancelled", "Expiré") : packLeft(pp) <= 0 ? pill("neutral", "Terminé") : pill("confirmed", packLeft(pp) + " restante" + (packLeft(pp) > 1 ? "s" : ""))}</span>
+          <span class="row__sub">${pp.sessions_used} / ${pp.sessions_total} utilisées · ${euros(pp.price_cents)}${pp.expires_at ? " · jusqu'au " + esc(dFr(pp.expires_at)) : ""}</span></span>
+        <button class="btn btn--sm" data-action="pack-pay" data-id="${pp.id}">${pp.payment_status === "paid" ? "Payé ✓" : "Marquer payé"}</button></div>`).join("")}</div>`
+        : `<div class="empty" style="padding:8px 0">Aucun pack pour ce joueur.</div>`}</section>`;
+  }
+  // Rattacher une séance à un pack du joueur (depuis la fiche de la séance).
+  function bookingPackHtml(b) {
+    if (!b.player_id) return "";
+    const usable = packsOf(b.player_id).filter((pp) => packLeft(pp) > 0 && !packExpired(pp) || pp.id === b.player_pack_id);
+    if (!usable.length) return "";
+    return `<label class="field"><span>Décompter sur un pack</span><select id="b-pack" data-booking-pack="${b.id}" ${b.pack_counted ? "disabled" : ""}>
+      <option value="">Aucun</option>${usable.map((pp) => `<option value="${pp.id}" ${pp.id === b.player_pack_id ? "selected" : ""}>${esc(pp.name)} (${packLeft(pp)} restante${packLeft(pp) > 1 ? "s" : ""})</option>`).join("")}</select>
+      <small class="muted">${b.pack_counted ? "Séance déjà décomptée." : "Décomptée quand la séance est terminée."}</small></label>`;
+  }
+
   // ============================================================== joueurs ===
   function playerStats(p) {
     const bs = S.bookings.filter((b) => b.player_id === p.id);
@@ -927,6 +1124,8 @@
           <label class="field"><span>Niveau</span><input type="text" id="pl-level" value="${esc(p.level || "")}" placeholder="P100"></label>
           <label class="field full"><span>Notes privées</span><textarea id="pl-notes" placeholder="Points forts, axes de travail, objectifs…">${esc(p.notes || "")}</textarea></label>
         </div>
+        ${id ? `<label class="switch"><span><b>Ne pas envoyer de rappel SMS</b><small>Cochez si le joueur refuse les SMS.</small></span><input type="checkbox" id="pl-optout" ${p.sms_optout ? "checked" : ""}></label>` : ""}
+        ${id ? playerPacksHtml(id) : ""}
         ${st && st.all.length ? `<div><div class="day-head">Historique</div><div class="rows">${[...st.all].reverse().slice(0, 30).map((b) => bookingRow(b, { showDate: true })).join("")}</div></div>` : ""}`,
       foot: `<button class="btn btn--primary" data-action="save-player" data-id="${id || ""}">Enregistrer</button>
         ${id ? `<button class="btn" data-action="new-booking" data-player-id="${id}">Réserver une séance</button><button class="btn btn--danger" data-action="ask-delete-player" data-id="${id}">Supprimer</button>` : ""}`,
@@ -938,6 +1137,7 @@
     const email = v("pl-email").toLowerCase();
     if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast("Email invalide.");
     const row = { first_name: v("pl-first"), last_name: v("pl-last"), phone: v("pl-phone") || null, email: email || null, level: v("pl-level") || null, notes: v("pl-notes") || null };
+    const oo = document.getElementById("pl-optout"); if (oo) row.sms_optout = oo.checked;
     try {
       if (id) { const r = await S.api.update("players", id, row); S.players[S.players.findIndex((p) => p.id === id)] = r; S.bookings = S.bookings.map((b) => b.player_id === id ? { ...b, player: r } : b); }
       else S.players.push(await S.api.insert("players", { ...row, coach_id: S.coach.id }));
@@ -1203,12 +1403,15 @@
   function galleryCard(confirmId) {
     const list = [...S.media].sort((a, b) => a.position - b.position);
     const visible = list.filter((m) => m.visible).length;
-    return `<section class="card" id="s-photos"><h2>Galerie photos <small>${visible} affichée${visible > 1 ? "s" : ""} sur le site</small></h2>
+    return `<section class="card" id="s-photos"><h2>Galerie photos et vidéos <small>${visible} affichée${visible > 1 ? "s" : ""} sur le site</small></h2>
       <p class="muted" style="margin:0 0 12px;font-size:14px">Photos de cours, de stages, de vos joueurs (avec leur accord). Les 10 premières s'affichent en mosaïque ; un clic les ouvre en plein écran.</p>
       <label class="dropzone" id="gal-drop"><input type="file" accept="image/*" multiple data-gallery-upload class="sr-only">
         ${icon("plus")}<span><b>Ajouter des photos</b><br><small>Plusieurs à la fois · JPG, PNG ou WebP · réduites automatiquement</small></span></label>
+      <div class="vid-add"><label class="field"><span>Ajouter une vidéo <small>(lien YouTube ou Vimeo, facultatif)</small></span>
+        <span class="vid-add__row"><input type="url" id="vid-url" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"><button type="button" class="btn" data-action="add-video">${icon("plus")} Ajouter</button></span></label>
+        <p class="muted" style="margin:6px 0 0;font-size:13px">La vidéo ne se charge chez YouTube ou Vimeo que si le visiteur clique dessus. Mettez-la en ligne chez eux (en « non répertoriée » si vous voulez), puis collez le lien ici.</p></div>
       <div class="media-grid">${list.map((m, i) => `<div class="media-tile ${m.visible ? "" : "media-tile--off"}">
-        <div class="media-tile__img">${m.url ? thumbImg(m.url, m.crop) : `<span>Emplacement</span>`}</div>
+        <div class="media-tile__img">${m.kind === "video" ? `<span>▶ Vidéo<br><small>${/vimeo/i.test(m.url) ? "Vimeo" : "YouTube"}</small></span>` : m.url ? thumbImg(m.url, m.crop) : `<span>Emplacement</span>`}</div>
         ${confirmId === m.id ? `<div class="confirm-box" style="margin:8px">Supprimer cette photo ?<div class="btn-row">
             <button type="button" class="btn btn--sm" data-action="media-cancel">Non</button><button type="button" class="btn btn--sm btn--dark" data-action="media-delete" data-id="${m.id}">Supprimer</button></div></div>`
           : `<input type="text" class="media-tile__cap" data-media-caption="${m.id}" maxlength="140" value="${esc(m.caption || "")}" placeholder="Légende (facultatif)" aria-label="Légende de la photo ${i + 1}">
@@ -1217,7 +1420,7 @@
           <span class="btn-row" style="flex-wrap:nowrap">
             <button type="button" class="icon-btn" data-action="media-move" data-id="${m.id}" data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="Avancer">${icon("left")}</button>
             <button type="button" class="icon-btn" data-action="media-move" data-id="${m.id}" data-dir="1" ${i === list.length - 1 ? "disabled" : ""} aria-label="Reculer">${icon("right")}</button>
-            ${m.url ? `<button type="button" class="icon-btn" data-action="media-crop" data-id="${m.id}" aria-label="Recadrer la photo ${i + 1}" title="Recadrer">${icon("crop")}</button>` : ""}
+            ${m.url && m.kind !== "video" ? `<button type="button" class="icon-btn" data-action="media-crop" data-id="${m.id}" aria-label="Recadrer la photo ${i + 1}" title="Recadrer">${icon("crop")}</button>` : ""}
             <button type="button" class="icon-btn" data-action="media-ask-delete" data-id="${m.id}" aria-label="Supprimer">${icon("x")}</button></span>
         </div>`}</div>`).join("")}</div>
       ${list.length ? "" : `<div class="empty">Aucune photo pour l'instant.</div>`}
@@ -1369,6 +1572,9 @@
             ${pill(c.status === "live" ? "confirmed" : "pending", c.status === "live" ? "En ligne" : c.status === "draft" ? "Brouillon" : "Suspendu")}</div>
             <label class="switch" style="margin-top:14px"><span><b>Apparaître dans l'annuaire PCW</b><small>Les élèves vous trouvent par ville ou par club dans l'annuaire des coachs PCW, avec un lien direct vers votre réservation.${c.status !== "live" ? " Visible dès la mise en ligne de votre site." : ""}</small></span>
               <input type="checkbox" id="s-directory" ${c.directory_listed !== false ? "checked" : ""}></label></section>
+          ${smsCard()}
+          <section class="card"><h2>Paiement en ligne des séances <span class="pill pill--neutral">Prochainement disponible</span></h2>
+            <p class="muted" style="margin:0;font-size:14px">Vos joueurs pourront bientôt régler leurs séances, stages et packs par carte directement sur votre site. Rien à faire de votre côté pour l'instant : vous continuez d'encaisser vous-même et de marquer « payé ».</p></section>
           <section class="card" id="push-card" data-scope="coach"></section>
           <section class="card" id="pcw-avis"><h2>Votre avis sur PCW Padel Coach</h2><p class="muted" style="margin:0">Chargement…</p></section>
           ${S.isAdmin ? `<section class="card" style="border-color:var(--accent)"><h2>Plateforme PCW <small>visible par l'équipe PCW seulement</small></h2>
@@ -1382,8 +1588,26 @@
         </div>
       </div>`;
   }
+  function smsCard() {
+    const c = S.coach;
+    const opts = (arr, val, fmt) => arr.map((o) => `<option value="${o}" ${String(o) === String(val) ? "selected" : ""}>${fmt(o)}</option>`).join("");
+    return `<section class="card" id="sms-card"><h2>Rappels SMS aux joueurs ${S.smsOn ? "" : '<span class="pill pill--neutral">Envoi bientôt disponible</span>'}</h2>
+      <p class="muted" style="margin:0 0 10px;font-size:14px">Un SMS de rappel est envoyé au joueur avant sa séance confirmée, avec le lien pour l'annuler. ${S.smsOn ? "" : "Vous pouvez déjà régler vos préférences : les envois démarreront dès que PCW activera le service."}</p>
+      <form id="sms-form" class="grid" style="gap:10px">
+        <label class="switch"><span><b>Activer les rappels SMS</b><small>Les joueurs sans numéro ou ayant refusé les SMS sont ignorés.</small></span><input type="checkbox" id="sms-on" ${c.sms_reminders ? "checked" : ""}></label>
+        <label class="switch"><span><b>Envoyer le rappel</b><small>Avant le début de la séance</small></span><select id="sms-hours">${opts([2, 4, 12, 24, 48], c.sms_reminder_hours || 24, (h) => `${h} h avant`)}</select></label>
+        <label class="switch"><span><b>Plafond par mois</b><small>Évite toute dépense imprévue${S.smsOn ? ` · ${S.smsUsed} envoyé${S.smsUsed > 1 ? "s" : ""} ce mois-ci` : ""}</small></span><select id="sms-cap">${opts([0, 20, 50, 100, 200, 500], c.sms_monthly_cap ?? 50, (n) => n ? `${n} SMS` : "Aucun envoi")}</select></label>
+        <div><button class="btn" type="submit">Enregistrer</button></div></form></section>`;
+  }
   AFTER.reglages = (page) => {
     bindCalForm(page);
+    const sf = page.querySelector("#sms-form");
+    if (sf) sf.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const patch = { sms_reminders: page.querySelector("#sms-on").checked, sms_reminder_hours: +page.querySelector("#sms-hours").value, sms_monthly_cap: +page.querySelector("#sms-cap").value };
+      try { Object.assign(S.coach, await S.api.updateCoach(S.coach.id, patch)); toast("Rappels SMS enregistrés"); }
+      catch (err) { toast(errMsg(err)); }
+    });
     loadTestimonial(page);
     pushInit();
     if (S.ui.scrollGoogle) { S.ui.scrollGoogle = false; const g = page.querySelector("#google"); if (g) g.scrollIntoView({ block: "start" }); }
@@ -1469,7 +1693,7 @@
   const navSum = (o) => Object.values(o).reduce((a, b) => a + (Number(b) || 0), 0);
   function navCountOf(key) {
     if (key === "console") return navSum(NAV.admin);
-    if (key === "more") return (NAV.counts.avis || 0) + (NAV.counts.factures || 0);
+    if (key === "more") return (NAV.counts.avis || 0) + (NAV.counts.factures || 0) + (NAV.counts.stages || 0);
     if (inConsole()) {
       const d = S.pcw && S.pcw.dash;
       return Math.max(NAV.admin[key] || 0, key === "reviews" && d ? d.pending_testimonials || 0 : 0);
@@ -1534,7 +1758,7 @@
   // enregistrés par appareil.
   const PUSH_KINDS = {
     coach: [["booking_new", "Nouvelle réservation"], ["booking_pending", "Réservation à valider"], ["booking_cancelled", "Annulation par l'élève"],
-      ["review_new", "Nouvel avis d'un élève"], ["message_new", "Nouveau message du site"], ["invoice_new", "Nouvelle facture PCW"]],
+      ["review_new", "Nouvel avis d'un élève"], ["stage_registration", "Inscription à un stage"], ["message_new", "Nouveau message du site"], ["invoice_new", "Nouvelle facture PCW"]],
     admin: [["admin_coach_live", "Un coach passe en ligne"], ["admin_review_pending", "Avis de coach à valider"], ["admin_invoice_due", "Facture échue"]],
   };
   const PUSH = { state: "loading", endpoint: null, prefs: {} };
@@ -2957,7 +3181,7 @@
       title: "Plus",
       body: `<div class="sheet-menu">
         <span class="sheet-menu__group">Au quotidien</span>
-        <a href="#joueurs">${icon(VIEWS.joueurs.icon)} Joueurs</a>
+        <a href="#stages" data-navkey="stages">${icon("flag")} Stages</a><a href="#joueurs">${icon(VIEWS.joueurs.icon)} Joueurs</a>
         <span class="sheet-menu__group">Mon activité</span>
         <a href="#statistiques">${icon("chart")} Statistiques</a><a href="#avis" data-navkey="avis">${icon("star")} Avis des élèves</a>
         <span class="sheet-menu__group">Ma vitrine</span>
@@ -2992,6 +3216,44 @@
     week: (el) => { const d = +el.dataset.delta; S.ui.weekStart = d === 0 ? P.mondayOf(todayYmd()) : P.addDays(S.ui.weekStart, d); render(); },
     "del-rule": async (el) => { try { await S.api.remove("availability_rules", el.dataset.id); S.rules = S.rules.filter((r) => r.id !== el.dataset.id); toast("Plage supprimée"); render(); } catch (e) { toast(errMsg(e)); } },
     "del-off": async (el) => { try { await S.api.remove("time_off", el.dataset.id); S.timeOff = S.timeOff.filter((r) => r.id !== el.dataset.id); toast("Absence supprimée"); render(); } catch (e) { toast(errMsg(e)); } },
+    "edit-stage": (el) => stageDrawer(el.dataset.id),
+    "save-stage": (el) => saveStage(el.dataset.id),
+    "ask-delete-stage": (el) => stageDrawer(el.dataset.id, true),
+    "delete-stage": async (el) => {
+      try { await S.api.remove("stages", el.dataset.id); S.stages = S.stages.filter((x) => x.id !== el.dataset.id); S.stageRegs = S.stageRegs.filter((r) => r.stage_id !== el.dataset.id);
+        await reloadCalendar(); closeDrawer(); toast("Stage supprimé"); render(); } catch (e) { toast(errMsg(e)); }
+    },
+    "reg-set": async (el) => {
+      try { const r = await S.api.update("stage_registrations", el.dataset.id, { status: el.dataset.status });
+        S.stageRegs[S.stageRegs.findIndex((x) => x.id === r.id)] = r; stageDrawer(r.stage_id); render(); toast({ confirmed: "Inscription confirmée", cancelled: "Inscription annulée", pending: "Inscription rétablie" }[r.status]); }
+      catch (e) { toast(errMsg(e)); }
+    },
+    "reg-pay": async (el) => {
+      const cur = S.stageRegs.find((x) => x.id === el.dataset.id);
+      try { const r = await S.api.update("stage_registrations", cur.id, { payment_status: cur.payment_status === "paid" ? "unpaid" : "paid" });
+        S.stageRegs[S.stageRegs.findIndex((x) => x.id === r.id)] = r; stageDrawer(r.stage_id); toast(r.payment_status === "paid" ? "Marqué payé" : "Marqué non payé"); }
+      catch (e) { toast(errMsg(e)); }
+    },
+    "edit-pack": (el) => packDrawer(el.dataset.id),
+    "save-pack": (el) => savePack(el.dataset.id),
+    "ask-delete-pack": (el) => packDrawer(el.dataset.id, true),
+    "delete-pack": async (el) => { try { await S.api.remove("packs", el.dataset.id); S.packs = S.packs.filter((k) => k.id !== el.dataset.id); closeDrawer(); toast("Pack supprimé"); render(); } catch (e) { toast(errMsg(e)); } },
+    "sell-pack": (el) => sellPackDrawer(el.dataset.playerId),
+    "do-sell-pack": (el) => doSellPack(el.dataset.playerId),
+    "pack-pay": async (el) => {
+      const cur = S.playerPacks.find((x) => x.id === el.dataset.id);
+      try { const r = await S.api.update("player_packs", cur.id, { payment_status: cur.payment_status === "paid" ? "unpaid" : "paid" });
+        S.playerPacks[S.playerPacks.findIndex((x) => x.id === r.id)] = r; playerDrawer(r.player_id); } catch (e) { toast(errMsg(e)); }
+    },
+    "add-video": async () => {
+      const inp = document.getElementById("vid-url"), url = (inp.value || "").trim();
+      if (!/^https:\/\/(www\.|m\.)?(youtube\.com\/(watch\?v=|shorts\/|embed\/)|youtu\.be\/|vimeo\.com\/)[A-Za-z0-9_./?=&%-]+$/i.test(url)) return toast("Collez un lien YouTube ou Vimeo complet (commençant par https://).");
+      try {
+        const pos = S.media.reduce((m, x) => Math.max(m, x.position), -1);
+        S.media.push(await S.api.insert("media", { coach_id: S.coach.id, url, kind: "video", caption: null, visible: true, position: pos + 1 }));
+        refreshGallery(); toast("Vidéo ajoutée au site");
+      } catch (e) { toast(errMsg(e)); }
+    },
     "edit-service": (el) => serviceDrawer(el.dataset.id),
     "save-service": (el) => saveService(el.dataset.id),
     "ask-delete-service": (el) => serviceDrawer(el.dataset.id, true),
@@ -3144,6 +3406,12 @@
     if (t.dataset.player && !t.dataset.action) { playerDrawer(t.dataset.player); return; }
     const fn = ACTIONS[t.dataset.action];
     if (fn) { e.preventDefault(); try { await fn(t); } catch (err) { console.error(err); } }
+  });
+  document.addEventListener("change", async (e) => {
+    const sel = e.target.closest && e.target.closest("[data-booking-pack]");
+    if (!sel) return;
+    try { await patchBooking(sel.dataset.bookingPack, { player_pack_id: sel.value || null }, sel.value ? "Séance rattachée au pack" : "Séance détachée du pack"); }
+    catch { const b = S.bookings.find((x) => x.id === sel.dataset.bookingPack); sel.value = (b && b.player_pack_id) || ""; }
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && e.target.matches("tr[data-player]")) playerDrawer(e.target.dataset.player);

@@ -59,6 +59,12 @@
       getSite: async (slug) => unwrap(await sb.rpc("public_get_site", { p_slug: slug })),
       getSlots: async (slug, serviceId, from, to) =>
         unwrap(await sb.rpc("public_get_slots", { p_slug: slug, p_service_id: serviceId, p_from: from, p_to: to })) || [],
+      getExtras: async (slug) => unwrap(await sb.rpc("public_get_extras", { p_slug: slug })) || { stages: [], packs: [], videos: [], online_payment: false },
+      registerStage: async (slug, r) => unwrap(await sb.rpc("public_register_stage", {
+        p_slug: slug, p_stage_id: r.stage_id, p_first_name: r.first_name, p_last_name: r.last_name || "",
+        p_email: r.email, p_phone: r.phone, p_party_size: r.party_size || 1, p_message: r.message || null })),
+      smsAvailable: async () => { try { return !!unwrap(await sb.rpc("sms_available")); } catch { return false; } },
+      smsUsage: async (coachId) => { try { return unwrap(await sb.rpc("coach_sms_usage", { p_coach_id: coachId })) || 0; } catch { return 0; } },
       book: async (slug, b) => unwrap(await sb.rpc("public_book", {
         p_slug: slug, p_service_id: b.service_id, p_starts_at: b.starts_at, p_first_name: b.first_name,
         p_last_name: b.last_name, p_email: b.email, p_phone: b.phone, p_level: b.level || null,
@@ -344,6 +350,43 @@
         const c = coachBySlug(slug);
         return delay(c ? slotsFor(c, serviceId, from, to) : []);
       },
+      getExtras: async (slug) => {
+        const c = coachBySlug(slug);
+        if (!c) return delay(null);
+        const taken = (id) => (db.stage_registrations || []).filter((r) => r.stage_id === id && r.status !== "cancelled").reduce((n, r) => n + r.party_size, 0);
+        const locOf = (id) => (db.locations || []).find((l) => l.id === id);
+        return delay(clone({
+          stages: (db.stages || []).filter((x) => x.coach_id === c.id && x.published && new Date(x.ends_at) > Date.now())
+            .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
+            .map((x) => ({ ...x, places_left: Math.max(0, x.capacity - taken(x.id)), location: locOf(x.location_id) || null })),
+          packs: (db.packs || []).filter((k) => k.coach_id === c.id && k.active).sort((a, b) => a.position - b.position)
+            .map((k) => ({ ...k, service_name: ((db.services || []).find((v) => v.id === k.service_id) || {}).name || null })),
+          videos: (db.media || []).filter((m) => m.coach_id === c.id && m.visible && m.kind === "video").sort((a, b) => a.position - b.position),
+          online_payment: false,
+        }));
+      },
+      registerStage: async (slug, r) => {
+        const c = coachBySlug(slug);
+        if (!c || c.status !== "live") throw new ApiError("Ce site ne prend pas d'inscription pour le moment.", "SITE_CLOSED");
+        const st = (db.stages || []).find((x) => x.id === r.stage_id && x.coach_id === c.id && x.published);
+        if (!st || new Date(st.ends_at) <= Date.now()) throw new ApiError("Ce stage n'est plus disponible.", "STAGE_UNAVAILABLE");
+        if (!st.registration_open) throw new ApiError("Les inscriptions à ce stage sont fermées. Contactez directement le coach.", "STAGE_CLOSED");
+        const email = String(r.email || "").trim().toLowerCase();
+        if (!String(r.first_name || "").trim()) throw new ApiError("Indiquez votre prénom.", "INVALID_INPUT");
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new ApiError("Adresse email invalide.", "INVALID_INPUT");
+        if (!/^\+?[0-9]{9,15}$/.test(String(r.phone || "").replace(/[^0-9+]/g, ""))) throw new ApiError("Numéro de téléphone invalide.", "INVALID_INPUT");
+        db.stage_registrations = db.stage_registrations || [];
+        const party = Number(r.party_size) || 1;
+        const taken = db.stage_registrations.filter((x) => x.stage_id === st.id && x.status !== "cancelled").reduce((n, x) => n + x.party_size, 0);
+        const left = st.capacity - taken;
+        if (left < party) throw new ApiError(left <= 0 ? "Ce stage est complet." : `Il ne reste que ${left} place(s) pour ce stage.`, "STAGE_FULL");
+        if (db.stage_registrations.some((x) => x.stage_id === st.id && x.email === email && x.status !== "cancelled")) throw new ApiError("Vous êtes déjà inscrit à ce stage avec cette adresse.", "ALREADY_REGISTERED");
+        const row = { id: P.uuid(), stage_id: st.id, coach_id: c.id, first_name: String(r.first_name).trim(), last_name: String(r.last_name || "").trim(), email, phone: String(r.phone).trim(), party_size: party, message: r.message || null, status: "pending", payment_status: "unpaid", created_at: new Date().toISOString() };
+        db.stage_registrations.push(row); save();
+        return delay({ id: row.id, status: "pending", stage_title: st.title, starts_at: st.starts_at, ends_at: st.ends_at, places_left: left - party });
+      },
+      smsAvailable: async () => false,
+      smsUsage: async () => 0,
       book: async (slug, b) => {
         const c = coachBySlug(slug);
         if (!c || c.status !== "live") throw new ApiError("Ce site ne prend pas de réservation pour le moment.", "SITE_CLOSED");
@@ -571,7 +614,7 @@
       },
       list: async (table, coachId, order = "position") => {
         const keys = String(order).split(",").map((k) => k.trim()).filter(Boolean);
-        const rows = db[table].filter((r) => r.coach_id === coachId);
+        const rows = (db[table] || []).filter((r) => r.coach_id === coachId);
         rows.sort((a, b) => { for (const k of keys) { if (a[k] < b[k]) return -1; if (a[k] > b[k]) return 1; } return 0; });
         return delay(clone(rows));
       },

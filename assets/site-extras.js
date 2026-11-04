@@ -1,0 +1,168 @@
+// Site public du coach : stages (avec inscription), packs de séances et vidéos.
+// Chargé après site.js. Chaque bloc reste caché tant que le coach n'a rien publié.
+(function () {
+  "use strict";
+  const P = window.PCW;
+  const $ = (s) => document.querySelector(s);
+  const esc = P.esc;
+  const safeHref = (u) => (/^https:\/\//i.test(String(u || "")) ? u : "");
+  const x = { api: null, slug: null, tz: "Europe/Paris", data: null, openStage: null, done: {}, busy: false, err: "" };
+
+  // ---------------------------------------------------------------- vidéos ---
+  // Une vidéo est un lien YouTube ou Vimeo. Rien n'est chargé chez eux tant que le visiteur ne clique pas.
+  function videoInfo(url) {
+    const u = String(url || "");
+    let m = u.match(/^https:\/\/(?:www\.|m\.)?youtube\.com\/(?:watch\?(?:[^#]*&)?v=|shorts\/|embed\/)([A-Za-z0-9_-]{6,15})/i) || u.match(/^https:\/\/youtu\.be\/([A-Za-z0-9_-]{6,15})/i);
+    if (m) return { host: "YouTube", embed: `https://www.youtube-nocookie.com/embed/${m[1]}?autoplay=1&rel=0` };
+    m = u.match(/^https:\/\/(?:www\.)?vimeo\.com\/(?:[a-z]+\/)*([0-9]{5,12})/i);
+    if (m) return { host: "Vimeo", embed: `https://player.vimeo.com/video/${m[1]}?autoplay=1` };
+    return null;
+  }
+  function renderVideos() {
+    const list = (x.data.videos || []).map((v) => ({ ...v, info: videoInfo(v.url) })).filter((v) => v.info);
+    const sec = $("#videos");
+    if (!sec) return;
+    sec.hidden = !list.length;
+    if (!list.length) return;
+    $("#videos-grid").innerHTML = list.map((v, i) => `<figure class="vid">
+      <button type="button" class="vid__tile" data-video="${i}" aria-label="Lire la vidéo${v.caption ? " : " + esc(v.caption) : ""}">
+        <span class="vid__play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span>
+        <span class="vid__host">${esc(v.info.host)}</span>
+      </button>
+      ${v.caption ? `<figcaption>${esc(v.caption)}</figcaption>` : ""}</figure>`).join("");
+    $("#videos-grid").onclick = (e) => {
+      const b = e.target.closest("[data-video]");
+      if (!b) return;
+      const v = list[Number(b.dataset.video)];
+      b.outerHTML = `<div class="vid__frame"><iframe src="${esc(v.info.embed)}" title="${esc(v.caption || "Vidéo")}" loading="lazy" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
+    };
+  }
+
+  // ---------------------------------------------------------------- stages ---
+  function when(s) {
+    const a = P.fmtDate(s.starts_at, x.tz, "short"), b = P.fmtDate(s.ends_at, x.tz, "short");
+    const ta = P.fmtTime(s.starts_at, x.tz), tb = P.fmtTime(s.ends_at, x.tz);
+    return a === b ? `${a}, ${ta} à ${tb}` : `Du ${a} (${ta}) au ${b} (${tb})`;
+  }
+  function stageCard(s) {
+    const full = s.places_left <= 0, closed = !s.registration_open;
+    const loc = s.location ? `${esc(s.location.name)}${s.location.address ? ", " + esc(s.location.address) : ""}` : "";
+    const done = x.done[s.id];
+    let action;
+    if (done) action = `<p class="alert alert--ok" role="status">Merci ${esc(done.first_name)} ! Votre demande d'inscription est bien reçue. Le coach vous confirme votre place par email ou téléphone.</p>`;
+    else if (closed) action = `<p class="muted">Inscriptions fermées : <a href="#contact">contactez le coach</a>.</p>`;
+    else if (full) action = `<p class="muted"><strong>Complet.</strong> <a href="#contact">Contactez le coach</a> pour la liste d'attente.</p>`;
+    else if (x.openStage === s.id) action = stageForm(s);
+    else action = `<button type="button" class="btn btn--ball" data-stage-open="${esc(s.id)}">S'inscrire</button>`;
+    return `<article class="stage" id="stage-${esc(s.id)}">
+      <div class="stage__top"><h3 class="stage__title">${esc(s.title)}</h3>
+        <span class="svc__price">${s.price_cents ? esc(P.fmtPrice(s.price_cents)) : "Sur demande"}</span></div>
+      <p class="stage__when">${esc(when(s))}</p>
+      <div class="svc__meta">
+        ${loc ? `<span class="tag">${loc}</span>` : ""}
+        ${s.level ? `<span class="tag">${esc(s.level)}</span>` : ""}
+        <span class="tag">${full ? "Complet" : `${s.places_left} place${s.places_left > 1 ? "s" : ""} restante${s.places_left > 1 ? "s" : ""}`}</span>
+      </div>
+      ${s.description ? `<p class="stage__desc">${esc(s.description)}</p>` : ""}
+      <div class="stage__action">${action}</div></article>`;
+  }
+  function stageForm(s) {
+    const max = Math.max(1, Math.min(6, s.places_left));
+    return `<form class="stage-form" data-stage-form="${esc(s.id)}" novalidate>
+      <div class="contact-form__grid">
+        <div class="field"><label for="sf-fn-${esc(s.id)}">Prénom</label><input id="sf-fn-${esc(s.id)}" name="first_name" autocomplete="given-name" maxlength="80" required></div>
+        <div class="field"><label for="sf-ln-${esc(s.id)}">Nom</label><input id="sf-ln-${esc(s.id)}" name="last_name" autocomplete="family-name" maxlength="80"></div>
+        <div class="field"><label for="sf-em-${esc(s.id)}">Email</label><input id="sf-em-${esc(s.id)}" name="email" type="email" autocomplete="email" maxlength="200" required></div>
+        <div class="field"><label for="sf-ph-${esc(s.id)}">Téléphone</label><input id="sf-ph-${esc(s.id)}" name="phone" type="tel" autocomplete="tel" maxlength="30" required></div>
+        <div class="field"><label for="sf-ps-${esc(s.id)}">Nombre de personnes</label><select id="sf-ps-${esc(s.id)}" name="party_size">${Array.from({ length: max }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join("")}</select></div>
+        <div class="field full"><label for="sf-ms-${esc(s.id)}">Message <span class="opt">(facultatif)</span></label><textarea id="sf-ms-${esc(s.id)}" name="message" maxlength="1000" rows="2" placeholder="Votre niveau, une question…"></textarea></div>
+      </div>
+      <label class="check"><input type="checkbox" name="accept" required> J'accepte que mes coordonnées soient transmises au coach pour traiter cette inscription (voir la page <a href="conditions.html" target="_blank" rel="noopener">Conditions</a>).</label>
+      ${x.err ? `<p class="alert alert--err" role="alert">${esc(x.err)}</p>` : ""}
+      <div class="stage-form__bar"><button type="button" class="btn btn--ghost" data-stage-cancel>Annuler</button>
+        <button type="submit" class="btn btn--ball" ${x.busy ? "disabled" : ""}>${x.busy ? "Envoi…" : "Envoyer ma demande"}</button></div>
+      <p class="muted stage-form__note">Aucun paiement maintenant. Paiement en ligne : prochainement disponible.</p></form>`;
+  }
+  function renderStages() {
+    const list = x.data.stages || [];
+    const sec = $("#stages");
+    if (!sec) return;
+    sec.hidden = !list.length;
+    if (!list.length) return;
+    $("#stages-list").innerHTML = list.map(stageCard).join("");
+  }
+
+  // ----------------------------------------------------------------- packs ---
+  function renderPacks() {
+    const list = x.data.packs || [];
+    const sec = $("#packs");
+    if (!sec) return;
+    sec.hidden = !list.length;
+    if (!list.length) return;
+    $("#packs-list").innerHTML = list.map((k) => {
+      const per = k.price_cents && k.sessions_count ? P.fmtPrice(Math.round(k.price_cents / k.sessions_count)) : "";
+      return `<article class="svc pack">
+        <div class="svc__top"><h3 class="svc__name">${esc(k.name)}</h3><span class="svc__price">${k.price_cents ? esc(P.fmtPrice(k.price_cents)) : "Sur demande"}</span></div>
+        <div class="svc__meta"><span class="tag">${k.sessions_count} séances</span>
+          ${per ? `<span class="tag">soit ${esc(per)} la séance</span>` : ""}
+          ${k.valid_days ? `<span class="tag">valable ${k.valid_days >= 60 ? Math.round(k.valid_days / 30) + " mois" : k.valid_days + " jours"}</span>` : ""}
+          ${k.service_name ? `<span class="tag">${esc(k.service_name)}</span>` : ""}</div>
+        ${k.description ? `<p>${esc(k.description)}</p>` : ""}
+        <a class="btn btn--ghost" href="#contact" data-pack-ask="${esc(k.name)}">Demander ce pack</a></article>`;
+    }).join("");
+    $("#packs-list").onclick = (e) => {
+      const a = e.target.closest("[data-pack-ask]");
+      if (!a) return;
+      const subject = $("#m-subject"), msg = $("#m-message");
+      if (subject) subject.value = "Autre question";
+      if (msg && !msg.value) msg.value = `Bonjour, je souhaite le pack « ${a.dataset.packAsk} ». Pouvez-vous me donner les modalités ?`;
+    };
+  }
+
+  function addNavLinks() {
+    const nav = document.querySelector(".nav");
+    if (!nav) return;
+    const add = (id, label, has) => { if (has && !nav.querySelector(`a[href="#${id}"]`)) { const a = document.createElement("a"); a.href = `#${id}`; a.textContent = label; nav.insertBefore(a, nav.querySelector('a[href="#lieux"]')); } };
+    add("stages", "Stages", (x.data.stages || []).length);
+    add("packs", "Packs", (x.data.packs || []).length);
+  }
+
+  function bind() {
+    $("#stages-list").addEventListener("click", (e) => {
+      const o = e.target.closest("[data-stage-open]");
+      if (o) { x.openStage = o.dataset.stageOpen; x.err = ""; renderStages(); const f = document.querySelector(`[data-stage-form="${x.openStage}"] input`); if (f) f.focus(); return; }
+      if (e.target.closest("[data-stage-cancel]")) { x.openStage = null; x.err = ""; renderStages(); }
+    });
+    $("#stages-list").addEventListener("submit", async (e) => {
+      const form = e.target.closest("[data-stage-form]");
+      if (!form) return;
+      e.preventDefault();
+      if (x.busy) return;
+      const fd = new FormData(form), id = form.dataset.stageForm;
+      if (!fd.get("accept")) { x.err = "Cochez la case pour continuer."; renderStages(); return; }
+      x.busy = true; x.err = ""; renderStages();
+      try {
+        await x.api.registerStage(x.slug, { stage_id: id, first_name: fd.get("first_name"), last_name: fd.get("last_name"), email: fd.get("email"), phone: fd.get("phone"), party_size: Number(fd.get("party_size")) || 1, message: fd.get("message") });
+        x.done[id] = { first_name: String(fd.get("first_name")).trim() };
+        x.openStage = null;
+        x.data = await x.api.getExtras(x.slug) || x.data;
+      } catch (err) { x.err = err.message || "Une erreur est survenue."; }
+      x.busy = false; renderStages();
+    });
+  }
+
+  async function init() {
+    if (!$("#stages-list")) return;
+    try {
+      x.api = await P.backend();
+      x.slug = P.currentSlug();
+      if (!x.api.getExtras) return;
+      x.data = await x.api.getExtras(x.slug);
+    } catch { return; }       // les blocs restent cachés : le reste du site n'est jamais affecté
+    if (!x.data) return;
+    const site = await x.api.getSite(x.slug).catch(() => null);
+    x.tz = (site && site.coach && site.coach.timezone) || "Europe/Paris";
+    bind(); renderStages(); renderPacks(); renderVideos(); addNavLinks();
+  }
+  init();
+})();
