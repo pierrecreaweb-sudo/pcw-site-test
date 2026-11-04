@@ -1363,6 +1363,7 @@
             ${pill(c.status === "live" ? "confirmed" : "pending", c.status === "live" ? "En ligne" : c.status === "draft" ? "Brouillon" : "Suspendu")}</div>
             <label class="switch" style="margin-top:14px"><span><b>Apparaître dans l'annuaire PCW</b><small>Les élèves vous trouvent par ville ou par club dans l'annuaire des coachs PCW, avec un lien direct vers votre réservation.${c.status !== "live" ? " Visible dès la mise en ligne de votre site." : ""}</small></span>
               <input type="checkbox" id="s-directory" ${c.directory_listed !== false ? "checked" : ""}></label></section>
+          <section class="card" id="push-card" data-scope="coach"></section>
           <section class="card" id="pcw-avis"><h2>Votre avis sur PCW Padel Coach</h2><p class="muted" style="margin:0">Chargement…</p></section>
           ${S.isAdmin ? `<section class="card" style="border-color:var(--accent)"><h2>Plateforme PCW <small>visible par l'équipe PCW seulement</small></h2>
             <div class="switch"><span><b>Statut de ce site</b><small>${c.status === "live" ? "Visible et ouvert aux réservations" : "Invisible du public tant qu'il n'est pas en ligne"}</small></span>
@@ -1378,6 +1379,7 @@
   AFTER.reglages = (page) => {
     bindCalForm(page);
     loadTestimonial(page);
+    pushInit();
     if (S.ui.scrollGoogle) { S.ui.scrollGoogle = false; const g = page.querySelector("#google"); if (g) g.scrollIntoView({ block: "start" }); }
     page.querySelector("#rules-form").addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -1417,6 +1419,125 @@
   const addMonthsYmd = (ymd, n) => { const d = new Date(ymd + "T12:00:00"); d.setMonth(d.getMonth() + n); return d.toISOString().slice(0, 10); };
   const coachSiteUrl = (c) => c.custom_domain ? `https://${c.custom_domain}/` : "";
   const PCW_TABS = [["overview", "Vue d'ensemble"], ["coaches", "Coachs"], ["billing", "Abonnements"], ["reviews", "Avis des coachs"]];
+
+  // ================================================================ notifications push ===
+  // Un appareil (navigateur ou application installée) s'abonne ; le serveur lui envoie une notification
+  // à chaque réservation, annulation, avis ou message (fonction push-worker). Les choix par type sont
+  // enregistrés par appareil.
+  const PUSH_KINDS = {
+    coach: [["booking_new", "Nouvelle réservation"], ["booking_pending", "Réservation à valider"], ["booking_cancelled", "Annulation par l'élève"],
+      ["review_new", "Nouvel avis d'un élève"], ["message_new", "Nouveau message du site"]],
+    admin: [["admin_coach_live", "Un coach passe en ligne"], ["admin_review_pending", "Avis de coach à valider"], ["admin_invoice_due", "Facture échue"]],
+  };
+  const PUSH = { state: "loading", endpoint: null, prefs: {} };
+  const pushIsIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const pushStandalone = () => window.navigator.standalone === true || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+  const pushSupported = () => S.api.mode !== "demo" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  function pushLabel() {
+    const ua = navigator.userAgent;
+    const os = /iphone/i.test(ua) ? "iPhone" : /ipad/i.test(ua) ? "iPad" : /android/i.test(ua) ? "Android" : /mac/i.test(ua) ? "Mac" : /windows/i.test(ua) ? "Windows" : "Appareil";
+    const br = /edg\//i.test(ua) ? "Edge" : /firefox/i.test(ua) ? "Firefox" : /chrome|crios/i.test(ua) ? "Chrome" : /safari/i.test(ua) ? "Safari" : "navigateur";
+    return `${os} · ${br}`;
+  }
+  const b64ToBytes = (b64) => {
+    const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+    const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+    return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+  };
+  async function pushRegistration() {
+    return navigator.serviceWorker.ready;
+  }
+  async function pushRefresh() {
+    if (S.api.mode === "demo") { PUSH.state = "demo"; return; }
+    if (!pushSupported()) { PUSH.state = pushIsIos() && !pushStandalone() ? "ios-install" : "unsupported"; return; }
+    if (pushIsIos() && !pushStandalone()) { PUSH.state = "ios-install"; return; }
+    if (Notification.permission === "denied") { PUSH.state = "denied"; return; }
+    try {
+      const sub = await (await pushRegistration()).pushManager.getSubscription();
+      if (!sub) { PUSH.state = "off"; PUSH.endpoint = null; PUSH.prefs = {}; return; }
+      const j = sub.toJSON();
+      PUSH.endpoint = sub.endpoint;
+      // Resynchronise l'appareil côté serveur (compte changé, appareil purgé...).
+      await S.api.pushSubscribe({ endpoint: sub.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth }, pushLabel());
+      PUSH.prefs = (await S.api.pushGetPrefs(sub.endpoint)) || {};
+      PUSH.state = "on";
+    } catch { PUSH.state = "off"; }
+  }
+  function pushCardInner(scope) {
+    const kinds = PUSH_KINDS[scope];
+    const title = scope === "admin" ? "Notifications PCW" : "Notifications";
+    const intro = scope === "admin"
+      ? "Soyez prévenu quand un coach passe en ligne, qu'un avis de coach attend votre validation ou qu'une facture arrive à échéance."
+      : "Soyez prévenu tout de suite d'une nouvelle réservation, d'une annulation, d'un avis ou d'un message, sur votre téléphone comme sur votre ordinateur.";
+    let body;
+    if (PUSH.state === "loading") body = `<p class="muted" style="margin:0">Chargement…</p>`;
+    else if (PUSH.state === "demo") body = `<p class="muted" style="margin:0">Indisponible dans la démonstration. Les notifications fonctionnent dans votre vrai espace.</p>`;
+    else if (PUSH.state === "unsupported") body = `<p class="muted" style="margin:0">Ce navigateur ne gère pas les notifications. Essayez Chrome, Edge, Firefox ou Safari à jour.</p>`;
+    else if (PUSH.state === "ios-install") body = `<p style="margin:0 0 6px"><b>Sur iPhone et iPad, une étape de plus.</b></p>
+      <ol class="muted" style="margin:0;padding-left:18px;line-height:1.6"><li>Ouvrez cette page dans <b>Safari</b>.</li><li>Touchez le bouton <b>Partager</b> (carré avec une flèche).</li><li>Touchez <b>Sur l'écran d'accueil</b>, puis <b>Ajouter</b>.</li><li>Ouvrez l'application depuis votre écran d'accueil et revenez ici pour activer les notifications.</li></ol>`;
+    else if (PUSH.state === "denied") body = `<p class="muted" style="margin:0">Les notifications sont bloquées pour ce site. Autorisez-les dans les réglages de votre navigateur (cadenas à gauche de l'adresse, puis Notifications), puis rechargez la page.</p>`;
+    else if (PUSH.state === "off") body = `<div class="btn-row"><button type="button" class="btn btn--primary" data-action="push-enable">Activer sur cet appareil</button></div>`;
+    else body = `<p style="margin:0 0 10px">${pill("confirmed", "Activées sur cet appareil")}</p>
+      ${kinds.map(([k, label]) => `<label class="switch"><span><b>${esc(label)}</b></span><input type="checkbox" data-push-kind="${k}" ${PUSH.prefs[k] === false ? "" : "checked"}></label>`).join("")}
+      <div class="btn-row" style="margin-top:12px"><button type="button" class="btn btn--sm" data-action="push-test">Envoyer un test</button>
+      <button type="button" class="btn btn--sm btn--danger" data-action="push-disable">Désactiver sur cet appareil</button></div>`;
+    return `<h2>${title}</h2><p class="muted" style="margin:0 0 12px">${intro}</p>${body}`;
+  }
+  async function pushRender() {
+    const card = document.getElementById("push-card");
+    if (!card) return;
+    const scope = card.dataset.scope === "admin" ? "admin" : "coach";
+    card.innerHTML = pushCardInner(scope);
+    card.querySelectorAll("[data-push-kind]").forEach((cb) => cb.addEventListener("change", async () => {
+      PUSH.prefs[cb.dataset.pushKind] = cb.checked;
+      try { await S.api.pushSetPref(PUSH.endpoint, cb.dataset.pushKind, cb.checked); } catch (e) { toast(errMsg(e)); }
+    }));
+  }
+  async function pushInit() {
+    const card = document.getElementById("push-card");
+    if (!card) return;
+    PUSH.state = "loading"; pushRender();
+    await pushRefresh();
+    pushRender();
+  }
+  const PUSH_ACTIONS = {
+    "push-enable": async () => {
+      try {
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") { PUSH.state = perm === "denied" ? "denied" : "off"; return pushRender(); }
+        const key = await S.api.pushPublicKey();
+        if (!key) throw new Error("Notifications indisponibles pour le moment.");
+        const reg = await pushRegistration();
+        const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(key) });
+        await pushRefresh();
+        toast("Notifications activées");
+      } catch (e) { toast("Activation impossible : " + errMsg(e)); }
+      pushRender();
+    },
+    "push-disable": async () => {
+      try {
+        const sub = await (await pushRegistration()).pushManager.getSubscription();
+        if (sub) { const ep = sub.endpoint; await sub.unsubscribe(); await S.api.pushUnsubscribe(ep); }
+        PUSH.state = "off"; PUSH.endpoint = null; PUSH.prefs = {};
+        toast("Notifications désactivées sur cet appareil");
+      } catch (e) { toast(errMsg(e)); }
+      pushRender();
+    },
+    "push-test": async (el) => {
+      el.disabled = true;
+      try { const r = await S.api.pushTest(); toast(r && r.sent ? "Test envoyé : regardez vos notifications" : "Aucune notification envoyée"); }
+      catch (e) { toast(errMsg(e)); }
+      el.disabled = false;
+    },
+  };
+  // Un clic sur une notification rouvre le back-office à la bonne page.
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("message", (e) => {
+      if (e.data && e.data.type === "goto") {
+        try { const u = new URL(e.data.url); if (u.origin === location.origin) location.hash = u.hash || "#dashboard"; } catch { /* ignoré */ }
+      }
+    });
+  }
 
   const PCW_TITLES = { overview: ["Vue d'ensemble", "Tous vos coachs en un coup d'œil."], coaches: ["Coachs", "Créer un coach, ouvrir sa fiche, entrer dans son espace."],
     billing: ["Abonnements et factures", "Suivi des abonnements, factures et paiements."], reviews: ["Avis des coachs", "Avis sur PCW Padel Coach à valider avant publication."] };
@@ -1478,6 +1599,10 @@
       ? `<section class="card" id="pcw-avis-admin"><h2>Avis des coachs</h2><p class="muted" style="margin:0">Chargement…</p></section>` : pcwOverviewHtml();
     if (t === "reviews") loadTestimonialsAdmin(document);
     if (t === "coaches") bindNewCoach(box);
+    if (t === "overview") {
+      box.insertAdjacentHTML("beforeend", `<section class="card" id="push-card" data-scope="admin" style="margin-top:14px"></section>`);
+      pushInit();
+    }
   }
 
   function pcwOverviewHtml() {
@@ -2600,6 +2725,7 @@
   }
   const ACTIONS = {
     ...PCW_ACTIONS,
+    ...PUSH_ACTIONS,
     "sign-out": async () => { await S.api.signOut(); S.user = null; S.coach = null; S.pcw = null; S.isAdmin = false; closeDrawer(); render(); },
     "reset-demo": async () => { S.api.reset(); await afterSignIn(); toast("Démo réinitialisée"); },
     "magic-link": async () => {

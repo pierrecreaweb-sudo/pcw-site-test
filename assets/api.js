@@ -104,6 +104,21 @@
         }
         return data;
       },
+      // ---- notifications push (appareil du navigateur)
+      pushPublicKey: async () => unwrap(await sb.rpc("push_public_key")),
+      pushSubscribe: async (sub, label) => { unwrap(await sb.rpc("push_subscribe", { p_endpoint: sub.endpoint, p_p256dh: sub.p256dh, p_auth: sub.auth, p_label: label || null })); },
+      pushUnsubscribe: async (endpoint) => { unwrap(await sb.rpc("push_unsubscribe", { p_endpoint: endpoint })); },
+      pushGetPrefs: async (endpoint) => unwrap(await sb.rpc("push_get_prefs", { p_endpoint: endpoint })) || {},
+      pushSetPref: async (endpoint, kind, enabled) => { unwrap(await sb.rpc("push_set_pref", { p_endpoint: endpoint, p_kind: kind, p_enabled: enabled })); },
+      pushTest: async () => {
+        const { data, error } = await sb.functions.invoke("push-worker", { body: { action: "test" } });
+        if (error) {
+          let msg = error.message;
+          try { msg = (await error.context.json()).error || msg; } catch { /* réponse non JSON */ }
+          throw new ApiError(msg, "PUSH_TEST");
+        }
+        return data;
+      },
       getSiteContent: async (coachId) => unwrap(await sb.from("site_content").select("*").eq("coach_id", coachId).single()),
       saveSiteContent: async (coachId, patch) => unwrap(await sb.from("site_content").update(patch).eq("coach_id", coachId).select().single()),
       list: async (table, coachId, order = "position") => {
@@ -484,6 +499,9 @@
       adminGetSettings: async () => delay(clone(db.platform_settings || {})),
       adminSetSettings: async (patch) => { db.platform_settings = { ...(db.platform_settings || {}), ...patch }; save(); return delay(clone(db.platform_settings)); },
       adminResendInvite: async () => delay({ sent: true, kind: "invite", email: "démo" }),
+      pushPublicKey: async () => null,
+      pushSubscribe: async () => {}, pushUnsubscribe: async () => {}, pushGetPrefs: async () => ({}), pushSetPref: async () => {},
+      pushTest: async () => ({ sent: 0 }),
       createCoach: async ({ slug, display_name, city, email, domain }) => {
         slug = String(slug || "").trim().toLowerCase();
         if (!/^[a-z0-9]([a-z0-9-]{1,38}[a-z0-9])$/.test(slug)) throw new ApiError("Adresse invalide : 3 à 40 caractères, lettres minuscules, chiffres et tirets.", "INVALID_INPUT");
