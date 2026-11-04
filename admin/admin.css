@@ -551,3 +551,44 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .shell--console .toolbar .btn { width: 100%; justify-content: center; }
   .shell--console .tabbar .tab span { font-size: 10.5px; }
 }
+
+/* ------------------------------------------------- console PCW : couleurs --- */
+.shell--console .kpi { --kc: var(--accent); border-left: 4px solid var(--kc); background: color-mix(in srgb, var(--kc) 8%, var(--panel)); }
+.shell--console .kpi__label { color: color-mix(in srgb, var(--kc) 80%, var(--ink)); }
+.shell--console .kpis > :nth-child(1) { --kc: #157F4B; }
+.shell--console .kpis > :nth-child(2) { --kc: #1E5BB8; }
+.shell--console .kpis > :nth-child(3) { --kc: #8A9A00; }
+.shell--console .kpis > :nth-child(4) { --kc: #D9480F; }
+.shell--console .kpis + .kpis > :nth-child(1) { --kc: #6D4AC2; }
+.shell--console .kpis + .kpis > :nth-child(2) { --kc: #C2670A; }
+.shell--console .kpis + .kpis > :nth-child(3) { --kc: #0E8A8A; }
+.shell--console .kpis--stats > :nth-child(1) { --kc: #8A9A00; }
+.shell--console .kpis--stats > :nth-child(2) { --kc: #157F4B; }
+.shell--console .kpis--stats > :nth-child(3) { --kc: #6D4AC2; }
+.shell--console .kpi--alert { --kc: var(--err) !important; background: var(--err-bg); }
+.shell--console .kpi--alert .kpi__value, .shell--console .kpi--alert .kpi__label { color: var(--err); }
+.shell--console .row--wrap { border-left: 4px solid var(--accent); }
+@media (max-width: 860px) {
+  .shell--console .page__head { background: linear-gradient(135deg, var(--nav), #1E5BB8); color: #fff; padding: 14px 16px; border-radius: 14px; border-bottom: 3px solid var(--ball); }
+  .shell--console .page__head h1 { color: #fff; }
+  .shell--console .page__head p { color: rgba(255, 255, 255, .82); }
+  .shell--console .tabbar { border-top: 3px solid var(--ball); }
+  .shell--console .tab[aria-current="page"] { background: color-mix(in srgb, var(--ball) 60%, transparent); color: var(--nav); }
+  .shell--console .tab[aria-current="page"] svg { color: var(--nav); }
+  .shell--console .toolbar .btn--primary { box-shadow: 0 4px 12px rgba(138, 154, 0, .35); }
+}
+
+/* ------------------------------------------------- Mes factures (coach) --- */
+.inv-summary { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 12px; margin-bottom: 12px; font-size: 15px; }
+.inv-summary--due { background: var(--warn-bg); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); }
+.inv-summary--ok { background: var(--ok-bg); color: var(--ok); border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent); }
+.inv-card { display: grid; gap: 10px; margin-bottom: 12px; border-left: 5px solid var(--line); }
+.inv-card--issued { border-left-color: #D99A2B; }
+.inv-card--paid { border-left-color: #3FA772; }
+.inv-card--cancelled { border-left-color: #8890A0; opacity: .75; }
+.inv-card__top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.inv-card__top b { display: block; font: 800 16px/1.2 var(--f-display); }
+.inv-card__top small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+.inv-amount { font: 800 22px/1.1 var(--f-display); white-space: nowrap; color: #1b6fa8; }
+.inv-note { margin: 0; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, #2C96D8 9%, var(--panel)); border: 1px solid color-mix(in srgb, #2C96D8 28%, transparent); font-size: 13.5px; line-height: 1.5; word-break: break-word; }
+@media (max-width: 520px) { .inv-card__top { flex-direction: column; gap: 4px; } }

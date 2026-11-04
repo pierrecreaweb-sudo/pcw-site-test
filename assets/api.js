@@ -104,6 +104,9 @@
         }
         return data;
       },
+      // ---- factures d'abonnement vues par le coach
+      coachInvoices: async (coachId) => unwrap(await sb.rpc("coach_invoices", { p_coach_id: coachId })) || { invoices: [], payment: {} },
+      adminSetInvoicePaymentUrl: async (id, url) => { unwrap(await sb.rpc("admin_set_invoice_payment_url", { p_id: id, p_url: url || null })); },
       // ---- notifications push (appareil du navigateur)
       pushPublicKey: async () => unwrap(await sb.rpc("push_public_key")),
       pushSubscribe: async (sub, label) => { unwrap(await sb.rpc("push_subscribe", { p_endpoint: sub.endpoint, p_p256dh: sub.p256dh, p_auth: sub.auth, p_label: label || null })); },
@@ -499,6 +502,18 @@
       adminGetSettings: async () => delay(clone(db.platform_settings || {})),
       adminSetSettings: async (patch) => { db.platform_settings = { ...(db.platform_settings || {}), ...patch }; save(); return delay(clone(db.platform_settings)); },
       adminResendInvite: async () => delay({ sent: true, kind: "invite", email: "démo" }),
+      coachInvoices: async () => {
+        const today = new Date().toISOString().slice(0, 10);
+        const due = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+        return delay({ payment: { iban: "FR76 0000 0000 0000 0000 0000 000", bic: "EXEMPLE", bank_name: "Banque exemple", stripe_link_monthly: "https://buy.stripe.com/exemple" },
+          invoices: [
+            { id: "demo-inv-2", number: "FA-2026-0002", kind: "monthly", status: "issued", issued_on: today, due_on: due, period_start: today, period_end: due, total_cents: 7900,
+              lines: [{ label: "Abonnement PCW Padel Coach, 1 mois", qty: 1, unit_cents: 7900 }], client: { name: "Lucas Ferrand", email: "coach@exemple.fr" }, pay_url: "https://buy.stripe.com/exemple" },
+            { id: "demo-inv-1", number: "FA-2026-0001", kind: "setup", status: "paid", issued_on: "2026-10-01", due_on: "2026-10-08", paid_on: "2026-10-03", total_cents: 3900,
+              lines: [{ label: "Mise en place du site", qty: 1, unit_cents: 3900 }], client: { name: "Lucas Ferrand", email: "coach@exemple.fr" } },
+          ] });
+      },
+      adminSetInvoicePaymentUrl: async () => {},
       pushPublicKey: async () => null,
       pushSubscribe: async () => {}, pushUnsubscribe: async () => {}, pushGetPrefs: async () => ({}), pushSetPref: async () => {},
       pushTest: async () => ({ sent: 0 }),

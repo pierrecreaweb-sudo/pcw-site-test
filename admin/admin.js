@@ -19,6 +19,7 @@
 
   // ================================================================= icônes ===
   const I = {
+    receipt: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
     bell: '<path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
     home: '<path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
     list: '<path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>',
@@ -126,6 +127,7 @@
     messages: { label: "Messages", icon: "mail", render: viewMessages },
     prestations: { label: "Prestations et lieux", short: "Prestations", icon: "tag", render: viewServices },
     "mon-site": { label: "Mon site", icon: "brush", render: viewSite },
+    factures: { label: "Mes factures", short: "Factures", icon: "receipt", render: viewInvoices },
     reglages: { label: "Réglages", icon: "gear", render: viewSettings },
     pcw: { label: "Console PCW", short: "Console", icon: "chart", render: viewPcw },
   };
@@ -136,7 +138,7 @@
     { title: "Au quotidien", keys: ["reservations", "agenda", "messages", "joueurs"] },
     { title: "Mon activité", keys: ["statistiques", "avis"] },
     { title: "Ma vitrine", keys: ["partager", "mon-site", "prestations"] },
-    { title: "Compte", keys: ["reglages"] },
+    { title: "Compte", keys: ["factures", "reglages"] },
   ];
   const currentView = () => { const h = location.hash.replace("#", ""); return VIEWS[h] && (h !== "pcw" || S.isAdmin) ? h : "dashboard"; };
   const inConsole = () => Boolean(S.user && S.isAdmin && currentView() === "pcw");
@@ -1421,13 +1423,48 @@
   const coachSiteUrl = (c) => c.custom_domain ? `https://${c.custom_domain}/` : "";
   const PCW_TABS = [["overview", "Vue d'ensemble"], ["coaches", "Coachs"], ["billing", "Abonnements"], ["reviews", "Avis des coachs"]];
 
+  // ================================================================ mes factures (coach) ===
+  function viewInvoices() {
+    return `<div class="page__head"><div><h1>Mes factures</h1><p>Vos factures d'abonnement PCW Padel Coach.</p></div></div><div id="inv-box"><p class="muted">Chargement…</p></div>`;
+  }
+  function invoiceCardsHtml(data) {
+    const inv = data.invoices || [], pay = data.payment || {};
+    if (!inv.length) return `<section class="card"><div class="empty">Aucune facture pour le moment. Vos factures PCW apparaîtront ici dès qu'elles seront émises.</div></section>`;
+    const due = inv.filter((i) => i.status === "issued");
+    const total = due.reduce((n, i) => n + i.total_cents, 0);
+    const kindLabel = { setup: "Mise en place du site", monthly: "Abonnement mensuel", other: "Facture" };
+    const summary = due.length
+      ? `<div class="inv-summary inv-summary--due"><b>${due.length} facture${due.length > 1 ? "s" : ""} à régler</b><span>${eur0(total)} au total</span></div>`
+      : `<div class="inv-summary inv-summary--ok"><b>Tout est réglé</b><span>Merci !</span></div>`;
+    const card = (i) => {
+      const url = payUrlOf(i, pay);
+      const open = i.status === "issued";
+      return `<section class="card inv-card inv-card--${i.status}">
+        <div class="inv-card__top"><div><b>${esc(i.number)}</b><small>${esc(kindLabel[i.kind] || "Facture")} · émise le ${esc(dFr(i.issued_on))}${open ? ` · échéance ${esc(dFr(i.due_on))}` : ""}${i.status === "paid" && i.paid_on ? ` · payée le ${esc(dFr(i.paid_on))}` : ""}</small></div>
+          <div class="inv-amount">${eur0(i.total_cents)}</div></div>
+        <div class="btn-row">${pill(...INV_ST[i.status])}
+          <button type="button" class="btn btn--sm" data-action="inv-coach-open" data-id="${esc(i.id)}">Voir la facture</button>
+          ${open && url ? `<a class="btn btn--sm btn--primary" href="${esc(url)}" target="_blank" rel="noopener">Payer par carte</a>` : ""}</div>
+        ${open ? `<p class="inv-note">Vous pouvez aussi régler cette facture <b>par virement bancaire</b> si vous le souhaitez${pay.iban ? ` :<br>IBAN <b>${esc(pay.iban)}</b>${pay.bic ? ` · BIC <b>${esc(pay.bic)}</b>` : ""}${pay.bank_name ? ` · ${esc(pay.bank_name)}` : ""}<br>Référence à indiquer : <b>${esc(i.number)}</b>${pay.payment_note ? ` · ${esc(pay.payment_note)}` : ""}` : ". Les coordonnées bancaires figurent sur la facture."}</p>` : ""}
+      </section>`;
+    };
+    return summary + inv.map(card).join("");
+  }
+  AFTER.factures = async (page) => {
+    const box = page.querySelector("#inv-box");
+    try {
+      S.invData = await S.api.coachInvoices(S.coach.id);
+      box.innerHTML = invoiceCardsHtml(S.invData);
+    } catch (e) { box.innerHTML = `<div class="alert alert--err">${esc(errMsg(e))}</div>`; }
+  };
+
   // ================================================================ notifications push ===
   // Un appareil (navigateur ou application installée) s'abonne ; le serveur lui envoie une notification
   // à chaque réservation, annulation, avis ou message (fonction push-worker). Les choix par type sont
   // enregistrés par appareil.
   const PUSH_KINDS = {
     coach: [["booking_new", "Nouvelle réservation"], ["booking_pending", "Réservation à valider"], ["booking_cancelled", "Annulation par l'élève"],
-      ["review_new", "Nouvel avis d'un élève"], ["message_new", "Nouveau message du site"]],
+      ["review_new", "Nouvel avis d'un élève"], ["message_new", "Nouveau message du site"], ["invoice_new", "Nouvelle facture PCW"]],
     admin: [["admin_coach_live", "Un coach passe en ligne"], ["admin_review_pending", "Avis de coach à valider"], ["admin_invoice_due", "Facture échue"]],
   };
   const PUSH = { state: "loading", endpoint: null, prefs: {} };
@@ -1721,50 +1758,101 @@
         <span class="row__main"><span class="row__title">${esc(i.number)} · ${esc(i.coach_name || "")}</span>
           <span class="row__sub">${eur0(i.total_cents)} · émise le ${dFr(i.issued_on)} · échéance ${dFr(i.due_on)}${i.paid_on ? ` · payée le ${dFr(i.paid_on)}` : ""}</span></span>
         <span class="row__end">${pill(...INV_ST[i.status])}<span class="btn-row" style="gap:6px">
-          <button type="button" class="btn btn--sm" data-action="inv-print" data-id="${i.id}">Voir / imprimer</button>
+          <button type="button" class="btn btn--sm" data-action="inv-print" data-id="${i.id}">Voir / imprimer</button><button type="button" class="btn btn--sm" data-action="inv-link" data-id="${i.id}">Lien Stripe</button>
           ${i.status === "issued" ? `<button type="button" class="btn btn--sm btn--primary" data-action="inv-paid" data-id="${i.id}">Marquer payée</button><button type="button" class="btn btn--sm" data-action="inv-cancel" data-id="${i.id}">Annuler</button>` : ""}</span></span></div>`;
     return `<h2 style="margin:22px 0 10px;font-size:18px">Factures</h2>
       <section class="card">${inv.length ? `<div class="rows">${inv.map(row).join("")}</div>` : `<div class="empty">Aucune facture. Ouvrez un coach dans la liste ci-dessus, puis « Facturer ».</div>`}</section>
-      <section class="card" style="margin-top:12px"><h2>Coordonnées de paiement <small>imprimées sur les factures</small></h2>
+      <section class="card" style="margin-top:12px"><h2>Paiement des factures <small>virement et carte Stripe</small></h2>
         <div class="form-grid">
           <label class="field"><span>IBAN</span><input type="text" id="st-iban" maxlength="60" value="${esc(st.iban || "")}" autocomplete="off"></label>
           <label class="field"><span>BIC</span><input type="text" id="st-bic" maxlength="20" value="${esc(st.bic || "")}" autocomplete="off"></label>
           <label class="field"><span>Banque (facultatif)</span><input type="text" id="st-bank" maxlength="80" value="${esc(st.bank_name || "")}"></label>
           <label class="field"><span>Mention libre (facultatif)</span><input type="text" id="st-note" maxlength="200" value="${esc(st.payment_note || "")}" placeholder="Ex. : référence à indiquer au virement"></label>
+          <label class="field"><span>Lien de paiement Stripe : mensualité</span><input type="url" id="st-link-m" maxlength="200" value="${esc(st.stripe_link_monthly || "")}" placeholder="https://buy.stripe.com/..."></label>
+          <label class="field"><span>Lien de paiement Stripe : mise en place</span><input type="url" id="st-link-s" maxlength="200" value="${esc(st.stripe_link_setup || "")}" placeholder="https://buy.stripe.com/..."></label>
+          <p class="full muted" style="margin:0;font-size:13px">Ces liens apparaissent sur chaque facture du coach (bouton « Payer par carte »), avec le numéro de facture et l'email du coach préremplis. Les coachs voient aussi les coordonnées bancaires pour payer par virement.</p>
           <div class="full"><button type="button" class="btn" data-action="pcw-save-settings">Enregistrer</button></div></div></section>`;
   }
 
-  // Facture imprimable : une page A4 sobre, ouverte dans un nouvel onglet (Imprimer, puis « Enregistrer au format PDF »).
-  function invoiceHtml(i, settings) {
-    const st = settings || {};
+  // Facture imprimable : même visuel que les factures Pierre Créa Web (bandeau bleu avec logo, cadre « Facturé à »,
+  // tableau, coordonnées bancaires, pied de page). Ouverte dans un nouvel onglet : Imprimer, puis « Enregistrer au format PDF ».
+  const EMETTEUR = { nom: "P.C.W - Pierre Créa Web", adresse: "150 Route d'Agen, 82170 Grisolles", siret: "SIRET 108 153 982 00013",
+    email: "pierre.creaweb@gmail.com", tel: "06 45 33 43 28", site: "pierrecreaweb.fr" };
+  // Lien Stripe de la facture : lien personnalisé, sinon celui de la mensualité / de la mise en place ; référence et email préremplis.
+  function payUrlOf(i, st) {
+    if (i.status !== "issued") return "";
+    const base = i.pay_url || i.payment_url || (st && (i.kind === "monthly" ? st.stripe_link_monthly : i.kind === "setup" ? st.stripe_link_setup : "")) || "";
+    if (!base) return "";
     const cl = i.client || {};
-    const lines = (i.lines || []).map((l) => `<tr><td>${esc(l.label)}</td><td class="r">${l.qty}</td><td class="r">${eur0(l.unit_cents)}</td><td class="r">${eur0(l.qty * l.unit_cents)}</td></tr>`).join("");
-    const bank = st.iban ? `<p><b>Paiement par virement</b><br>IBAN : ${esc(st.iban)}${st.bic ? `<br>BIC : ${esc(st.bic)}` : ""}${st.bank_name ? `<br>Banque : ${esc(st.bank_name)}` : ""}<br>Référence à indiquer : ${esc(i.number)}${st.payment_note ? `<br>${esc(st.payment_note)}` : ""}</p>` : `<p><b>Paiement</b> : selon le moyen indiqué au contrat d'abonnement. Référence à indiquer : ${esc(i.number)}.</p>`;
-    return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Facture ${esc(i.number)}</title><style>
-      @page { size: A4; margin: 18mm; } body { font: 14px/1.5 system-ui, Arial, sans-serif; color: #111; margin: 0; padding: 24px; max-width: 760px; margin-inline: auto; }
-      h1 { font-size: 26px; margin: 0 0 4px; } .top { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
-      .box { flex: 1; } .muted { color: #555; } table { width: 100%; border-collapse: collapse; margin: 22px 0 8px; } th, td { padding: 8px 6px; border-bottom: 1px solid #ccc; text-align: left; }
-      th { background: #f3f3f3; } .r { text-align: right; } .tot { font-size: 18px; font-weight: 700; text-align: right; margin: 8px 0 22px; }
-      .paid { display: inline-block; border: 2px solid #1b7f3b; color: #1b7f3b; font-weight: 700; padding: 4px 10px; border-radius: 6px; transform: rotate(-3deg); margin-bottom: 12px; }
-      .legal { font-size: 12px; color: #444; border-top: 1px solid #ccc; padding-top: 10px; margin-top: 24px; } .bar { position: sticky; top: 0; background: #fff; padding-bottom: 10px; }
-      @media print { .bar { display: none; } body { padding: 0; } }</style></head><body>
-      <div class="bar"><button onclick="window.print()">Imprimer / enregistrer en PDF</button></div>
-      <div class="top"><div class="box"><b>Pierre Créa Web</b><br>Pierre Orriols, entrepreneur individuel<br>150 route d'Agen, 82170 Grisolles<br>SIRET 108 153 982 00013<br>pierre.creaweb@gmail.com · 06 45 33 43 28</div>
-        <div class="box"><b>Facturé à</b><br>${esc(cl.name || "")}${cl.address ? `<br>${esc(cl.address).replace(/\n/g, "<br>")}` : ""}${cl.siret ? `<br>SIRET ${esc(cl.siret)}` : ""}${cl.email ? `<br>${esc(cl.email)}` : ""}</div></div>
-      <h1>Facture ${esc(i.number)}</h1>
-      <p class="muted">Date d'émission : ${dFr(i.issued_on)} · Échéance : ${dFr(i.due_on)}</p>
-      ${i.status === "paid" ? `<div class="paid">ACQUITTÉE le ${dFr(i.paid_on)}</div>` : i.status === "cancelled" ? `<div class="paid" style="color:#a33;border-color:#a33">ANNULÉE</div>` : ""}
-      <table><thead><tr><th>Désignation</th><th class="r">Qté</th><th class="r">Prix unitaire</th><th class="r">Total</th></tr></thead><tbody>${lines}</tbody></table>
-      <div class="tot">Total à payer : ${eur0(i.total_cents)}</div>
-      <p class="muted">TVA non applicable, article 293 B du Code général des impôts.</p>
-      ${i.status === "paid" ? "" : bank}
-      <div class="legal">Contrat d'abonnement PCW Padel Coach et conditions générales de vente (pcwpadel.fr/cgv.html). Pas d'escompte pour paiement anticipé. En cas de retard de paiement : pénalités au taux de trois fois le taux d'intérêt légal et indemnité forfaitaire de 40 € pour frais de recouvrement (articles L441-10 et D441-5 du Code de commerce).${i.notes ? `<br>${esc(i.notes)}` : ""}</div>
-      </body></html>`;
+    return base + (base.includes("?") ? "&" : "?") + "client_reference_id=" + encodeURIComponent(i.number) + (cl.email ? "&prefilled_email=" + encodeURIComponent(cl.email) : "");
   }
-  function openInvoice(i) {
+  function invoiceHtml(i, pay) {
+    const st = pay || {};
+    const cl = i.client || {};
+    const logo = new URL("../assets/pcw-logo.png", location.href).href;
+    const payUrl = payUrlOf(i, st);
+    const lines = (i.lines || []).map((l, k) => `<tr class="${k % 2 ? "" : "alt"}"><td>${esc(l.label)}</td><td class="r">${l.qty}</td><td class="r">${eur0(l.unit_cents)}</td><td class="r">${eur0(l.qty * l.unit_cents)}</td></tr>`).join("");
+    const clientLines = [cl.name, cl.address, cl.siret ? "SIRET " + cl.siret : "", cl.email].filter(Boolean).flatMap((x) => String(x).split("\n"));
+    const period = i.period_start && i.period_end ? `&nbsp;&nbsp;&nbsp;&nbsp; Période : du ${dFr(i.period_start)} au ${dFr(i.period_end)}` : "";
+    const stamp = i.status === "paid" ? ["PAYÉE", "#c9ead8"] : i.status === "cancelled" ? ["ANNULÉE", "#e4e6ec"] : null;
+    const bank = st.iban ? `<div class="box"><div class="k">COORDONNÉES BANCAIRES POUR LE RÈGLEMENT PAR VIREMENT</div>
+        <div class="big">IBAN : ${esc(st.iban)}</div><div class="big">${st.bic ? `BIC : ${esc(st.bic)}` : ""}${st.bank_name ? `&nbsp;&nbsp;·&nbsp;&nbsp;${esc(st.bank_name)}` : ""}</div>
+        <div class="small">Référence à indiquer au virement : <b>${esc(i.number)}</b>${st.payment_note ? ` · ${esc(st.payment_note)}` : ""}</div></div>` : "";
+    const payBlock = i.status === "issued" ? `<p class="pay">Vous pouvez, si vous le souhaitez, régler cette facture par <b>virement bancaire</b>${bank ? " (coordonnées ci-dessous)" : ""}${payUrl ? ` ou par <b>carte bancaire</b> en ligne : <a href="${esc(payUrl)}" target="_blank" rel="noopener">payer cette facture par carte</a>` : ""}.</p>${bank}` : "";
+    return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Facture ${esc(i.number)}</title><style>
+      @page { size: A4; margin: 0; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #e9edf3; font: 11pt/1.35 Helvetica, Arial, sans-serif; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .bar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; padding: 10px; background: #fff; border-bottom: 1px solid #ccd3df; }
+      .bar button, .bar a { font: 700 14px Arial, sans-serif; padding: 9px 14px; border-radius: 8px; border: 1px solid #2C96D8; background: #fff; color: #1b6fa8; cursor: pointer; text-decoration: none; }
+      .bar .pri { background: #2C96D8; color: #fff; }
+      .page { position: relative; width: 210mm; min-height: 297mm; margin: 12px auto; background: #fff; overflow: hidden; padding-bottom: 28mm; box-shadow: 0 2px 14px rgba(0,0,0,.15); }
+      .band { position: relative; height: 36mm; background: #2C96D8; color: #fff; }
+      .logo { position: absolute; left: 16mm; top: 7mm; width: 22mm; height: 22mm; border-radius: 4mm; }
+      .ttl { position: absolute; left: 44mm; top: 0; height: 36mm; display: flex; align-items: center; font-size: 22pt; font-weight: 700; }
+      .iss { position: absolute; right: 16mm; top: 8mm; text-align: right; font-size: 8.3pt; line-height: 4.2mm; }
+      .in { padding: 0 16mm; }
+      .info { margin: 9mm 0 5mm; font-size: 10pt; color: #5a5a5a; }
+      .box { border: 1px solid #e0e3eb; background: #f7f8fc; border-radius: 2.5mm; padding: 4mm 5mm; }
+      .k { font-size: 9.5pt; color: #787878; margin-bottom: 2mm; }
+      .cl { font-size: 10.5pt; line-height: 5.6mm; }
+      h2 { font-size: 12pt; margin: 9mm 0 4mm; font-weight: 400; }
+      table { width: 100%; border-collapse: collapse; }
+      th { background: #2C96D8; color: #fff; font-size: 8.5pt; text-align: left; padding: 2.4mm 4mm; font-weight: 400; }
+      td { padding: 2mm 4mm; font-size: 10pt; } tr.alt td { background: #f7f8fc; } .r { text-align: right; }
+      hr { border: 0; border-top: 1px solid #d2d2d2; margin: 3mm 0 6mm; }
+      .tva { font-size: 9pt; color: #5a5a5a; margin: 0 0 6mm 4mm; }
+      .net { font-size: 13pt; font-weight: 700; margin: 0 0 7mm 4mm; }
+      .pay { font-size: 10pt; margin: 0 0 4mm; } .pay a { color: #1b6fa8; word-break: break-all; }
+      .big { font-size: 11pt; line-height: 6mm; } .small { font-size: 9pt; color: #5a5a5a; margin-top: 1mm; }
+      .cond { margin-top: 7mm; font-size: 9pt; color: #444; line-height: 1.45; } .cond b { font-size: 10pt; color: #000; }
+      .stamp { position: absolute; left: 0; right: 0; top: 125mm; text-align: center; font-size: 54pt; font-weight: 700; transform: rotate(-25deg); pointer-events: none; }
+      .foot { position: absolute; left: 0; right: 0; bottom: 10mm; text-align: center; font-size: 8pt; color: #787878; padding: 0 17mm; }
+      @media print { body { background: #fff; } .bar { display: none; } .page { margin: 0; box-shadow: none; } }
+    </style></head><body>
+      <div class="bar"><button class="pri" onclick="window.print()">Imprimer / enregistrer en PDF</button>${payUrl ? `<a class="pri" href="${esc(payUrl)}" target="_blank" rel="noopener">Payer par carte</a>` : ""}</div>
+      <div class="page">
+        <div class="band"><img class="logo" src="${esc(logo)}" alt=""><div class="ttl">FACTURE</div>
+          <div class="iss">${[EMETTEUR.nom, EMETTEUR.adresse, EMETTEUR.siret, EMETTEUR.email, "Tél : " + EMETTEUR.tel, EMETTEUR.site].map(esc).join("<br>")}</div></div>
+        ${stamp ? `<div class="stamp" style="color:${stamp[1]}">${stamp[0]}</div>` : ""}
+        <div class="in">
+          <div class="info">N° : ${esc(i.number)} &nbsp;&nbsp;&nbsp;&nbsp; Date : ${dFr(i.issued_on)} &nbsp;&nbsp;&nbsp;&nbsp; Échéance : ${dFr(i.due_on)}${period}</div>
+          <div class="box"><div class="k">FACTURÉ À</div><div class="cl">${clientLines.map(esc).join("<br>") || "&nbsp;"}</div></div>
+          <h2>Détail</h2>
+          <table><thead><tr><th>DÉSIGNATION</th><th class="r">QTÉ</th><th class="r">PU (€)</th><th class="r">TOTAL (€)</th></tr></thead><tbody>${lines}</tbody></table>
+          <hr>
+          <p class="tva">TVA non applicable, art. 293 B du CGI</p>
+          <p class="net">${i.status === "paid" ? `FACTURE ACQUITTÉE LE ${dFr(i.paid_on)} : ${eur0(i.total_cents)}` : `NET À PAYER : ${eur0(i.total_cents)}`}</p>
+          ${payBlock}
+          <div class="cond"><b>Conditions :</b> contrat d'abonnement PCW Padel Coach et conditions générales de vente (pcwpadel.fr/cgv.html). Pas d'escompte pour paiement anticipé. En cas de retard de paiement : pénalités au taux de trois fois le taux d'intérêt légal et indemnité forfaitaire de 40 € pour frais de recouvrement.</div>
+        </div>
+        <div class="foot">${[EMETTEUR.nom, EMETTEUR.adresse, EMETTEUR.siret, EMETTEUR.email, "Tél : " + EMETTEUR.tel, EMETTEUR.site].map(esc).join(" — ")}</div>
+      </div></body></html>`;
+  }
+  function openInvoice(i, pay) {
     const w = window.open("", "_blank");
     if (!w) return toast("Autorisez les fenêtres pop-up pour afficher la facture.");
-    w.document.open(); w.document.write(invoiceHtml(i, (S.pcw && S.pcw.settings) || {})); w.document.close();
+    w.document.open(); w.document.write(invoiceHtml(i, pay || (S.pcw && S.pcw.settings) || {})); w.document.close();
   }
 
   async function invoiceDrawer(coachId, kind) {
@@ -1874,6 +1962,22 @@
       } catch (err) { toast(errMsg(err)); }
     },
     "inv-print": (el) => { const i = (S.pcw.invoices || []).find((x) => x.id === el.dataset.id); if (i) openInvoice(i); },
+    "inv-coach-open": (el) => { const d = S.invData || {}; const i = (d.invoices || []).find((x) => x.id === el.dataset.id); if (i) openInvoice(i, d.payment || {}); },
+    "inv-link": (el) => {
+      const i = (S.pcw.invoices || []).find((x) => x.id === el.dataset.id); if (!i) return;
+      openDrawer({ title: `Lien de paiement · ${i.number}`,
+        body: `<p class="muted" style="margin:0">Par défaut, le lien Stripe de la mensualité ou de la mise en place (réglé dans « Coordonnées de paiement ») est utilisé. Collez ici un lien Stripe propre à cette facture si le montant est différent.</p>
+          <label class="field"><span>Lien Stripe de cette facture (facultatif)</span><input type="url" id="il-url" maxlength="200" value="${esc(i.payment_url || "")}" placeholder="https://buy.stripe.com/..."></label>`,
+        foot: `<button class="btn btn--primary" data-action="inv-link-save" data-id="${i.id}">Enregistrer</button>` });
+    },
+    "inv-link-save": async (el) => {
+      try {
+        const url = gv("il-url").trim();
+        await S.api.adminSetInvoicePaymentUrl(el.dataset.id, url);
+        const i = (S.pcw.invoices || []).find((x) => x.id === el.dataset.id); if (i) i.payment_url = url || null;
+        closeDrawer(); toast(url ? "Lien de paiement enregistré" : "Lien personnalisé retiré");
+      } catch (err) { toast(errMsg(err)); }
+    },
     "inv-paid": async (el) => {
       try { await S.api.adminMarkInvoicePaid(el.dataset.id, null); toast("Facture payée : l'abonnement est à jour"); await refreshPcw(); }
       catch (err) { toast(errMsg(err)); }
@@ -1885,7 +1989,7 @@
     },
     "pcw-save-settings": async () => {
       try {
-        S.pcw.settings = await S.api.adminSetSettings({ iban: gv("st-iban"), bic: gv("st-bic"), bank_name: gv("st-bank"), payment_note: gv("st-note") });
+        S.pcw.settings = await S.api.adminSetSettings({ iban: gv("st-iban"), bic: gv("st-bic"), bank_name: gv("st-bank"), payment_note: gv("st-note"), stripe_link_monthly: gv("st-link-m"), stripe_link_setup: gv("st-link-s") });
         toast("Coordonnées de paiement enregistrées");
       } catch (err) { toast(errMsg(err)); }
     },
@@ -2786,7 +2890,7 @@
         <span class="sheet-menu__group">Ma vitrine</span>
         <a href="#partager">${icon("share")} Partager ma page</a><a href="#mon-site">${icon("brush")} Mon site</a><a href="#prestations">${icon("tag")} Prestations et lieux</a>
         <span class="sheet-menu__group">Compte</span>
-        <a href="#reglages">${icon("gear")} Réglages</a>
+        <a href="#factures">${icon("receipt")} Mes factures</a><a href="#reglages">${icon("gear")} Réglages</a>
         ${S.isAdmin && S.api.mode !== "demo" ? `<span class="sheet-menu__group">Plateforme PCW</span><a href="#pcw">${icon("left")} Retour à la console PCW</a>` : ""}
         <a href="../index.html?c=${encodeURIComponent(S.coach.slug)}" target="_blank" rel="noopener">${icon("ext")} Voir mon site</a>
         <a href="../aide.html" target="_blank" rel="noopener">${icon("ext")} Aide et contact</a>
