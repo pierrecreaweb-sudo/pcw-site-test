@@ -89,19 +89,23 @@
     };
   }
 
+  // Le lien « Mon espace » ne dépend d'aucune donnée : il est ajouté dès le chargement.
+  function addSpaceLink() {
+    const nav = document.querySelector(".nav");
+    if (!nav || nav.querySelector(".nav__space")) return;
+    const q = new URLSearchParams(location.search).get("c");
+    const a = document.createElement("a");
+    a.className = "nav__space"; a.textContent = "Mon espace";
+    a.href = "mon-espace.html" + (q ? "?c=" + encodeURIComponent(q) : "");
+    nav.appendChild(a);
+  }
+
   function addNavLinks() {
     const nav = document.querySelector(".nav");
     if (!nav) return;
     const add = (id, label, has) => { if (has && !nav.querySelector(`a[href="#${id}"]`)) { const a = document.createElement("a"); a.href = `#${id}`; a.textContent = label; nav.insertBefore(a, nav.querySelector('a[href="#lieux"]')); } };
     add("stages", "Stages", (x.data.stages || []).length);
     add("packs", "Packs", (x.data.packs || []).length);
-    if (!nav.querySelector(".nav__space")) {
-      const q = new URLSearchParams(location.search).get("c");
-      const a = document.createElement("a");
-      a.className = "nav__space"; a.textContent = "Mon espace";
-      a.href = "mon-espace.html" + (q ? "?c=" + encodeURIComponent(q) : "");
-      nav.appendChild(a);
-    }
   }
 
   function bind() {
@@ -129,6 +133,7 @@
   }
 
   async function init() {
+    addSpaceLink();
     if (!$("#stages-list")) return;
     try {
       x.api = await P.backend();
