@@ -1,4 +1,4 @@
-// Site public du coach : stages (avec inscription), packs de séances et vidéos.
+// Site public du coach : stages (avec inscription) et packs de séances.
 // Chargé après site.js. Chaque bloc reste caché tant que le coach n'a rien publié.
 (function () {
   "use strict";
@@ -7,36 +7,6 @@
   const esc = P.esc;
   const safeHref = (u) => (/^https:\/\//i.test(String(u || "")) ? u : "");
   const x = { api: null, slug: null, tz: "Europe/Paris", data: null, openStage: null, done: {}, busy: false, err: "" };
-
-  // ---------------------------------------------------------------- vidéos ---
-  // Une vidéo est un lien YouTube ou Vimeo. Rien n'est chargé chez eux tant que le visiteur ne clique pas.
-  function videoInfo(url) {
-    const u = String(url || "");
-    let m = u.match(/^https:\/\/(?:www\.|m\.)?youtube\.com\/(?:watch\?(?:[^#]*&)?v=|shorts\/|embed\/)([A-Za-z0-9_-]{6,15})/i) || u.match(/^https:\/\/youtu\.be\/([A-Za-z0-9_-]{6,15})/i);
-    if (m) return { host: "YouTube", embed: `https://www.youtube-nocookie.com/embed/${m[1]}?autoplay=1&rel=0` };
-    m = u.match(/^https:\/\/(?:www\.)?vimeo\.com\/(?:[a-z]+\/)*([0-9]{5,12})/i);
-    if (m) return { host: "Vimeo", embed: `https://player.vimeo.com/video/${m[1]}?autoplay=1` };
-    return null;
-  }
-  function renderVideos() {
-    const list = (x.data.videos || []).map((v) => ({ ...v, info: videoInfo(v.url) })).filter((v) => v.info);
-    const sec = $("#videos");
-    if (!sec) return;
-    sec.hidden = !list.length;
-    if (!list.length) return;
-    $("#videos-grid").innerHTML = list.map((v, i) => `<figure class="vid">
-      <button type="button" class="vid__tile" data-video="${i}" aria-label="Lire la vidéo${v.caption ? " : " + esc(v.caption) : ""}">
-        <span class="vid__play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span>
-        <span class="vid__host">${esc(v.info.host)}</span>
-      </button>
-      ${v.caption ? `<figcaption>${esc(v.caption)}</figcaption>` : ""}</figure>`).join("");
-    $("#videos-grid").onclick = (e) => {
-      const b = e.target.closest("[data-video]");
-      if (!b) return;
-      const v = list[Number(b.dataset.video)];
-      b.outerHTML = `<div class="vid__frame"><iframe src="${esc(v.info.embed)}" title="${esc(v.caption || "Vidéo")}" loading="lazy" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
-    };
-  }
 
   // ---------------------------------------------------------------- stages ---
   function when(s) {
@@ -125,6 +95,13 @@
     const add = (id, label, has) => { if (has && !nav.querySelector(`a[href="#${id}"]`)) { const a = document.createElement("a"); a.href = `#${id}`; a.textContent = label; nav.insertBefore(a, nav.querySelector('a[href="#lieux"]')); } };
     add("stages", "Stages", (x.data.stages || []).length);
     add("packs", "Packs", (x.data.packs || []).length);
+    if (!nav.querySelector(".nav__space")) {
+      const q = new URLSearchParams(location.search).get("c");
+      const a = document.createElement("a");
+      a.className = "nav__space"; a.textContent = "Mon espace";
+      a.href = "mon-espace.html" + (q ? "?c=" + encodeURIComponent(q) : "");
+      nav.appendChild(a);
+    }
   }
 
   function bind() {
@@ -162,7 +139,7 @@
     if (!x.data) return;
     const site = await x.api.getSite(x.slug).catch(() => null);
     x.tz = (site && site.coach && site.coach.timezone) || "Europe/Paris";
-    bind(); renderStages(); renderPacks(); renderVideos(); addNavLinks();
+    bind(); renderStages(); renderPacks(); addNavLinks();
   }
   init();
 })();

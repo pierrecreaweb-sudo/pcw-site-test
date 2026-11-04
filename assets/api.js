@@ -59,12 +59,13 @@
       getSite: async (slug) => unwrap(await sb.rpc("public_get_site", { p_slug: slug })),
       getSlots: async (slug, serviceId, from, to) =>
         unwrap(await sb.rpc("public_get_slots", { p_slug: slug, p_service_id: serviceId, p_from: from, p_to: to })) || [],
-      getExtras: async (slug) => unwrap(await sb.rpc("public_get_extras", { p_slug: slug })) || { stages: [], packs: [], videos: [], online_payment: false },
+      getExtras: async (slug) => unwrap(await sb.rpc("public_get_extras", { p_slug: slug })) || { stages: [], packs: [], online_payment: false },
       registerStage: async (slug, r) => unwrap(await sb.rpc("public_register_stage", {
         p_slug: slug, p_stage_id: r.stage_id, p_first_name: r.first_name, p_last_name: r.last_name || "",
         p_email: r.email, p_phone: r.phone, p_party_size: r.party_size || 1, p_message: r.message || null })),
-      smsAvailable: async () => { try { return !!unwrap(await sb.rpc("sms_available")); } catch { return false; } },
-      smsUsage: async (coachId) => { try { return unwrap(await sb.rpc("coach_sms_usage", { p_coach_id: coachId })) || 0; } catch { return 0; } },
+      playerSpace: async (token) => unwrap(await sb.rpc("public_player_space", { p_token: token })),
+      requestPlayerSpace: async (slug, email) => !!unwrap(await sb.rpc("public_request_player_space", { p_slug: slug, p_email: email })),
+      setPlayerOptout: async (token, optout) => !!unwrap(await sb.rpc("public_player_set_optout", { p_token: token, p_optout: !!optout })),
       book: async (slug, b) => unwrap(await sb.rpc("public_book", {
         p_slug: slug, p_service_id: b.service_id, p_starts_at: b.starts_at, p_first_name: b.first_name,
         p_last_name: b.last_name, p_email: b.email, p_phone: b.phone, p_level: b.level || null,
@@ -361,7 +362,6 @@
             .map((x) => ({ ...x, places_left: Math.max(0, x.capacity - taken(x.id)), location: locOf(x.location_id) || null })),
           packs: (db.packs || []).filter((k) => k.coach_id === c.id && k.active).sort((a, b) => a.position - b.position)
             .map((k) => ({ ...k, service_name: ((db.services || []).find((v) => v.id === k.service_id) || {}).name || null })),
-          videos: (db.media || []).filter((m) => m.coach_id === c.id && m.visible && m.kind === "video").sort((a, b) => a.position - b.position),
           online_payment: false,
         }));
       },
@@ -385,8 +385,32 @@
         db.stage_registrations.push(row); save();
         return delay({ id: row.id, status: "pending", stage_title: st.title, starts_at: st.starts_at, ends_at: st.ends_at, places_left: left - party });
       },
-      smsAvailable: async () => false,
-      smsUsage: async () => 0,
+      // Démo : le lien « ?t=demo » ouvre l'espace du premier joueur du coach modèle.
+      playerSpace: async (token) => {
+        if (token !== "demo") return delay(null);
+        const c = coachBySlug("demo");
+        const p = (db.players || []).filter((x) => x.coach_id === c.id)[0];
+        if (!p) return delay(null);
+        const locName = (id) => ((db.locations || []).find((l) => l.id === id) || {}).name || null;
+        const bs = db.bookings.filter((b) => b.player_id === p.id);
+        const now = Date.now();
+        return delay(clone({
+          coach: { slug: c.slug, display_name: c.display_name, timezone: c.timezone },
+          player: { first_name: p.first_name, last_name: p.last_name, level: p.level, marketing_optout: !!p.marketing_optout },
+          upcoming: bs.filter((b) => ["pending", "confirmed"].includes(b.status) && new Date(b.starts_at) > now).sort((a, b) => a.starts_at.localeCompare(b.starts_at))
+            .map((b) => ({ starts_at: b.starts_at, ends_at: b.ends_at, service_name: b.service_name, status: b.status, location: locName(b.location_id), cancel_token: b.cancel_token })),
+          history: bs.filter((b) => ["confirmed", "completed", "no_show"].includes(b.status) && new Date(b.starts_at) <= now).sort((a, b) => b.starts_at.localeCompare(a.starts_at)).slice(0, 60)
+            .map((b) => ({ starts_at: b.starts_at, service_name: b.service_name, status: b.status, location: locName(b.location_id), player_notes: b.player_notes || null, pack_name: null })),
+          packs: (db.player_packs || []).filter((x) => x.player_id === p.id).map((x) => ({ name: x.name, sessions_total: x.sessions_total, sessions_used: x.sessions_used, expires_at: x.expires_at, payment_status: x.payment_status })),
+          stages: [],
+        }));
+      },
+      requestPlayerSpace: async () => delay(true),
+      setPlayerOptout: async (token, optout) => {
+        const p = (db.players || []).filter((x) => x.coach_id === coachBySlug("demo").id)[0];
+        if (p) { p.marketing_optout = !!optout; save(); }
+        return delay(true);
+      },
       book: async (slug, b) => {
         const c = coachBySlug(slug);
         if (!c || c.status !== "live") throw new ApiError("Ce site ne prend pas de réservation pour le moment.", "SITE_CLOSED");

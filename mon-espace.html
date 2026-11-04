@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Mon espace joueur</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="referrer" content="no-referrer">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link id="font-link" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Hanken+Grotesk:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="assets/site.css">
+<style>
+  .space { display: grid; gap: 18px; padding: 28px 0 56px; max-width: 760px; margin: 0 auto; }
+  .space h2 { margin: 0 0 12px; font: 800 20px/1.2 var(--f-display); color: var(--brand); }
+  .space ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .space li { padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+  .space li b { color: var(--brand); }
+  .space .sub { color: var(--muted); font-size: 14px; }
+  .space .notes { margin: 8px 0 0; padding: 10px 12px; border-radius: 10px; background: #F4F8D6; color: var(--brand); font-size: 15px; white-space: pre-wrap; }
+  .space .bar { height: 10px; border-radius: 999px; background: var(--line); overflow: hidden; margin: 8px 0 4px; }
+  .space .bar > i { display: block; height: 100%; background: var(--brand); border-radius: 999px; }
+  .space .check { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; }
+  .space .check input { margin-top: 4px; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap topbar__in">
+    <a class="brand" href="index.html" id="brand"><span class="brand__mark" aria-hidden="true"></span><span id="brand-text">MON ESPACE</span></a>
+  </div>
+</header>
+<main class="wrap">
+  <div class="space" id="space" aria-live="polite"><div class="panel"><div class="skeleton"></div><div class="skeleton" style="margin-top:12px;width:60%"></div></div></div>
+</main>
+<script src="assets/config.js"></script>
+<script src="assets/core.js"></script>
+<script src="assets/demo-data.js"></script>
+<script src="assets/api.js"></script>
+<script>
+(function () {
+  "use strict";
+  const P = window.PCW, esc = P.esc;
+  const el = document.getElementById("space");
+  const params = new URLSearchParams(location.search);
+  const token = params.get("t") || "";
+  const slug = params.get("c") || P.currentSlug();
+  const home = `index.html${params.get("c") ? "?c=" + encodeURIComponent(params.get("c")) : ""}`;
+  document.getElementById("brand").href = home;
+  let api, data = null, sent = false, busy = false, err = "";
+  const ST = { confirmed: "Confirmée", pending: "À valider", completed: "Terminée", no_show: "Absent" };
+
+  function askForm() {
+    return `<div class="panel">
+      <p class="eyebrow eyebrow--brand">Espace joueur</p>
+      <h1 class="h2" style="font-size:30px">Retrouvez vos séances</h1>
+      <p class="muted">Indiquez l'adresse email utilisée pour vos réservations : nous vous envoyons un lien personnel pour consulter votre historique, vos packs et les points travaillés avec votre coach.</p>
+      ${sent ? `<p class="alert alert--ok" role="status">Si cette adresse correspond à un joueur de ce coach, un email vient de partir. Pensez à vérifier vos courriers indésirables.</p>`
+      : `<form id="ask" class="field" novalidate><label for="em">Votre email</label><input id="em" type="email" autocomplete="email" required maxlength="200">
+         ${err ? `<p class="alert alert--err" role="alert">${esc(err)}</p>` : ""}
+         <div class="actions" style="margin-top:12px"><button class="btn btn--brand" type="submit" ${busy ? "disabled" : ""}>${busy ? "Envoi…" : "Recevoir mon lien"}</button></div></form>`}
+      ${slug === "demo" ? `<p class="muted" style="margin-top:14px">Démo : <a href="mon-espace.html?c=demo&t=demo">ouvrir un espace joueur d'exemple</a>.</p>` : ""}
+    </div>`;
+  }
+
+  function render() {
+    if (!token) { el.innerHTML = askForm(); return; }
+    if (!data) { el.innerHTML = `<div class="panel"><h1 class="h3">Lien introuvable</h1><p class="muted">Ce lien n'est plus valide ou le site du coach n'est pas en ligne. Demandez un nouveau lien depuis la page « Mon espace » du site de votre coach.</p><a class="btn btn--brand" href="mon-espace.html${params.get("c") ? "?c=" + encodeURIComponent(params.get("c")) : ""}">Recevoir un nouveau lien</a></div>`; return; }
+    const tz = data.coach.timezone || "Europe/Paris";
+    document.getElementById("brand-text").textContent = data.coach.display_name.toUpperCase();
+    document.title = `Mon espace · ${data.coach.display_name}`;
+    const site = `index.html?c=${encodeURIComponent(data.coach.slug)}`;
+    const done = data.history.filter((h) => h.status !== "no_show").length;
+    const worked = data.history.filter((h) => h.player_notes);
+    const packs = data.packs;
+    el.innerHTML = `
+      <div class="panel"><p class="eyebrow eyebrow--brand">Espace joueur</p>
+        <h1 class="h2" style="font-size:30px">Bonjour ${esc(data.player.first_name)}</h1>
+        <p class="muted" style="margin:0 0 14px">${done} séance${done > 1 ? "s" : ""} avec ${esc(data.coach.display_name)}${data.player.level ? " · niveau " + esc(data.player.level) : ""}</p>
+        <a class="btn btn--ball" href="${site}#reserver">Réserver une séance</a></div>
+      <div class="panel"><h2>Prochaines séances</h2>${data.upcoming.length ? `<ul>${data.upcoming.map((u) => `<li><b>${esc(u.service_name)}</b> · ${esc(ST[u.status] || u.status)}<br>
+          <span class="sub">${esc(P.fmtDate(u.starts_at, tz))}, ${P.fmtTime(u.starts_at, tz)} – ${P.fmtTime(u.ends_at, tz)}${u.location ? " · " + esc(u.location) : ""}</span><br>
+          <a href="reservation.html?t=${esc(u.cancel_token)}${params.get("c") ? "&c=" + encodeURIComponent(params.get("c")) : ""}">Gérer ou annuler</a></li>`).join("")}</ul>`
+        : `<p class="muted" style="margin:0">Aucune séance à venir.</p>`}</div>
+      ${packs.length ? `<div class="panel"><h2>Mes packs de séances</h2><ul>${packs.map((k) => {
+        const left = k.sessions_total - k.sessions_used, pct = Math.round(100 * k.sessions_used / k.sessions_total);
+        const exp = k.expires_at && k.expires_at < new Date().toISOString().slice(0, 10);
+        return `<li><b>${esc(k.name)}</b> ${exp ? '<span class="sub">· expiré</span>' : left <= 0 ? '<span class="sub">· terminé</span>' : ""}
+          <div class="bar" role="img" aria-label="${k.sessions_used} séances utilisées sur ${k.sessions_total}"><i style="width:${pct}%"></i></div>
+          <span class="sub">${k.sessions_used} utilisée${k.sessions_used > 1 ? "s" : ""} sur ${k.sessions_total} · <b>${Math.max(0, left)} restante${left > 1 ? "s" : ""}</b>${k.expires_at ? " · valable jusqu'au " + esc(P.fmtYmd(k.expires_at)) : ""}</span></li>`; }).join("")}</ul></div>` : ""}
+      ${worked.length ? `<div class="panel"><h2>Points travaillés aux derniers cours</h2><ul>${worked.slice(0, 5).map((h) => `<li><b>${esc(P.fmtDate(h.starts_at, tz, "short"))}</b> · ${esc(h.service_name)}<div class="notes">${esc(h.player_notes)}</div></li>`).join("")}</ul></div>` : ""}
+      ${data.stages.length ? `<div class="panel"><h2>Mes stages</h2><ul>${data.stages.map((s) => `<li><b>${esc(s.title)}</b> · ${s.status === "confirmed" ? "Confirmé" : "En attente de confirmation"}<br><span class="sub">${esc(P.fmtDate(s.starts_at, tz))}</span></li>`).join("")}</ul></div>` : ""}
+      <div class="panel"><h2>Historique des séances</h2>${data.history.length ? `<ul>${data.history.map((h) => `<li><b>${esc(h.service_name)}</b> · ${esc(ST[h.status] || h.status)}<br>
+          <span class="sub">${esc(P.fmtDate(h.starts_at, tz))}, ${P.fmtTime(h.starts_at, tz)}${h.location ? " · " + esc(h.location) : ""}${h.pack_name ? " · pack « " + esc(h.pack_name) + " »" : ""}</span></li>`).join("")}</ul>`
+        : `<p class="muted" style="margin:0">Vos séances apparaîtront ici après votre premier cours.</p>`}</div>
+      <div class="panel"><h2>Mes préférences</h2>
+        <label class="check"><input type="checkbox" id="optout" ${data.player.marketing_optout ? "checked" : ""}> <span>Ne plus recevoir les annonces de stages par email</span></label>
+        <p class="sub" style="margin:10px 0 0">Les emails liés à vos réservations (confirmation, rappel) continuent d'être envoyés.</p></div>
+      <p class="sub" style="text-align:center">Ce lien est personnel : ne le partagez pas.</p>`;
+  }
+
+  el.addEventListener("submit", async (e) => {
+    if (e.target.id !== "ask") return;
+    e.preventDefault();
+    const em = document.getElementById("em").value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { err = "Adresse email invalide."; render(); return; }
+    busy = true; err = ""; render();
+    try { await api.requestPlayerSpace(slug, em); sent = true; } catch (x) { err = x.message || "Une erreur est survenue."; }
+    busy = false; render();
+  });
+  el.addEventListener("change", async (e) => {
+    if (e.target.id !== "optout") return;
+    try { await api.setPlayerOptout(token, e.target.checked); } catch { e.target.checked = !e.target.checked; }
+  });
+
+  (async function init() {
+    try {
+      api = await P.backend();
+      if (token) data = await api.playerSpace(token);
+    } catch (x) { data = null; }
+    render();
+  })();
+})();
+</script>
+</body>
+</html>

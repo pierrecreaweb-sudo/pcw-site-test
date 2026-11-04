@@ -9,7 +9,7 @@
   const S = {
     api: null, user: null, coaches: [], coach: null, loading: false,
     services: [], locations: [], rules: [], media: [], messages: [], timeOff: [], players: [], testimonials: [], site: null, bookings: [],
-    reviews: [], stages: [], stageRegs: [], packs: [], playerPacks: [], smsOn: false, smsUsed: 0, busy: [], calImport: null, allBookings: null, allLoadedAt: 0,
+    reviews: [], stages: [], stageRegs: [], packs: [], playerPacks: [], busy: [], calImport: null, allBookings: null, allLoadedAt: 0,
     isAdmin: false,
     ui: { resFilter: "upcoming", resQuery: "", playerQuery: "", weekStart: null },
     recovery: false,
@@ -107,8 +107,6 @@
     S.reviews = await S.api.list("reviews", id, "created_at").catch(() => []);
     const opt = (t, o) => S.api.list(t, id, o).catch(() => []);
     [S.stages, S.stageRegs, S.packs, S.playerPacks] = await Promise.all([opt("stages", "starts_at"), opt("stage_registrations", "created_at"), opt("packs", "position,name"), opt("player_packs", "created_at")]);
-    S.smsOn = await S.api.smsAvailable().catch(() => false);
-    S.smsUsed = S.api.smsUsage ? await S.api.smsUsage(id).catch(() => 0) : 0;
     await reloadCalendar();
     S.allBookings = null;
     await loadBookings();
@@ -519,6 +517,7 @@
         </section>
         ${b.player_message ? `<div><div class="muted" style="font-size:13px;font-weight:700;margin-bottom:4px">Message du joueur</div><p style="margin:0">${esc(b.player_message)}</p></div>` : ""}
         ${bookingPackHtml(b)}
+        <label class="field"><span>Points travaillés <small>(visibles par le joueur dans son espace)</small></span><textarea id="b-pnotes" maxlength="2000" placeholder="Ex. : service, placement en fond de court, sortie de vitre…">${esc(b.player_notes || "")}</textarea></label>
         <label class="field"><span>Notes privées</span><textarea id="b-notes" placeholder="Visible par vous seul : exercices travaillés, objectifs…">${esc(b.coach_notes || "")}</textarea></label>
         <div id="move-zone"></div>`,
       foot: `${actions}<button class="btn" data-action="save-notes" data-id="${b.id}">Enregistrer les notes</button>`,
@@ -949,6 +948,7 @@
           <label class="switch full"><span><b>Bloquer mon agenda</b><small>Aucune réservation normale pendant le stage.</small></span><input type="checkbox" id="st-block" ${s.block_agenda ? "checked" : ""}></label>
           <label class="switch full"><span><b>Visible sur mon site</b><small>Décochez pour le préparer sans le publier.</small></span><input type="checkbox" id="st-pub" ${s.published ? "checked" : ""}></label>
           <label class="switch full"><span><b>Inscriptions ouvertes</b><small>Décochez quand c'est complet ou clos.</small></span><input type="checkbox" id="st-open" ${s.registration_open ? "checked" : ""}></label>
+          ${id ? "" : `<label class="switch full"><span><b>Prévenir mes joueurs par email</b><small>Un email avec bouton d'inscription part à tous ceux qui ont déjà pris un cours avec vous (sauf ceux qui s'y opposent).</small></span><input type="checkbox" id="st-announce" checked></label>`}
           <p class="muted full" style="margin:0;font-size:13px">Paiement en ligne des stages : <b>prochainement disponible</b>. Pour l'instant, vous encaissez vous-même et cochez « Payé ».</p>
         </form>${regHtml}`,
       foot: `<button class="btn btn--primary" data-action="save-stage" data-id="${id || ""}">Enregistrer</button>${id ? `<button class="btn btn--danger" data-action="ask-delete-stage" data-id="${id}">Supprimer</button>` : ""}`,
@@ -967,11 +967,12 @@
     const row = { title, description: v("st-desc").value.trim() || null, starts_at: start.toISOString(), ends_at: end.toISOString(),
       location_id: v("st-loc").value || null, level: v("st-level").value.trim() || null, price_cents: price, capacity: cap,
       block_agenda: v("st-block").checked, published: v("st-pub").checked, registration_open: v("st-open").checked };
+    if (!id) row.announce = v("st-announce") ? v("st-announce").checked : true;
     try {
       if (id) { const r = await S.api.update("stages", id, row); S.stages[S.stages.findIndex((x) => x.id === id)] = r; }
       else S.stages.push(await S.api.insert("stages", { ...row, coach_id: S.coach.id }));
       await reloadCalendar();
-      closeDrawer(); toast(row.block_agenda ? "Stage enregistré, agenda bloqué" : "Stage enregistré"); render();
+      closeDrawer(); toast(!id && row.announce && row.published ? "Stage enregistré, vos joueurs sont prévenus par email" : row.block_agenda ? "Stage enregistré, agenda bloqué" : "Stage enregistré"); render();
     } catch (e) { toast(errMsg(e)); }
   }
 
@@ -1124,10 +1125,11 @@
           <label class="field"><span>Niveau</span><input type="text" id="pl-level" value="${esc(p.level || "")}" placeholder="P100"></label>
           <label class="field full"><span>Notes privées</span><textarea id="pl-notes" placeholder="Points forts, axes de travail, objectifs…">${esc(p.notes || "")}</textarea></label>
         </div>
-        ${id ? `<label class="switch"><span><b>Ne pas envoyer de rappel SMS</b><small>Cochez si le joueur refuse les SMS.</small></span><input type="checkbox" id="pl-optout" ${p.sms_optout ? "checked" : ""}></label>` : ""}
+        ${id ? `<label class="switch"><span><b>Ne pas envoyer les annonces de stages</b><small>Cochez si le joueur ne souhaite plus recevoir ces emails.</small></span><input type="checkbox" id="pl-optout" ${p.marketing_optout ? "checked" : ""}></label>` : ""}
         ${id ? playerPacksHtml(id) : ""}
         ${st && st.all.length ? `<div><div class="day-head">Historique</div><div class="rows">${[...st.all].reverse().slice(0, 30).map((b) => bookingRow(b, { showDate: true })).join("")}</div></div>` : ""}`,
       foot: `<button class="btn btn--primary" data-action="save-player" data-id="${id || ""}">Enregistrer</button>
+        ${id && p.space_token ? `<button class="btn" data-action="copy-space" data-id="${id}">Copier le lien de son espace</button>` : ""}
         ${id ? `<button class="btn" data-action="new-booking" data-player-id="${id}">Réserver une séance</button><button class="btn btn--danger" data-action="ask-delete-player" data-id="${id}">Supprimer</button>` : ""}`,
     });
   }
@@ -1137,7 +1139,7 @@
     const email = v("pl-email").toLowerCase();
     if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast("Email invalide.");
     const row = { first_name: v("pl-first"), last_name: v("pl-last"), phone: v("pl-phone") || null, email: email || null, level: v("pl-level") || null, notes: v("pl-notes") || null };
-    const oo = document.getElementById("pl-optout"); if (oo) row.sms_optout = oo.checked;
+    const oo = document.getElementById("pl-optout"); if (oo) row.marketing_optout = oo.checked;
     try {
       if (id) { const r = await S.api.update("players", id, row); S.players[S.players.findIndex((p) => p.id === id)] = r; S.bookings = S.bookings.map((b) => b.player_id === id ? { ...b, player: r } : b); }
       else S.players.push(await S.api.insert("players", { ...row, coach_id: S.coach.id }));
@@ -1403,15 +1405,12 @@
   function galleryCard(confirmId) {
     const list = [...S.media].sort((a, b) => a.position - b.position);
     const visible = list.filter((m) => m.visible).length;
-    return `<section class="card" id="s-photos"><h2>Galerie photos et vidéos <small>${visible} affichée${visible > 1 ? "s" : ""} sur le site</small></h2>
+    return `<section class="card" id="s-photos"><h2>Galerie photos <small>${visible} affichée${visible > 1 ? "s" : ""} sur le site</small></h2>
       <p class="muted" style="margin:0 0 12px;font-size:14px">Photos de cours, de stages, de vos joueurs (avec leur accord). Les 10 premières s'affichent en mosaïque ; un clic les ouvre en plein écran.</p>
       <label class="dropzone" id="gal-drop"><input type="file" accept="image/*" multiple data-gallery-upload class="sr-only">
         ${icon("plus")}<span><b>Ajouter des photos</b><br><small>Plusieurs à la fois · JPG, PNG ou WebP · réduites automatiquement</small></span></label>
-      <div class="vid-add"><label class="field"><span>Ajouter une vidéo <small>(lien YouTube ou Vimeo, facultatif)</small></span>
-        <span class="vid-add__row"><input type="url" id="vid-url" placeholder="https://www.youtube.com/watch?v=…" inputmode="url"><button type="button" class="btn" data-action="add-video">${icon("plus")} Ajouter</button></span></label>
-        <p class="muted" style="margin:6px 0 0;font-size:13px">La vidéo ne se charge chez YouTube ou Vimeo que si le visiteur clique dessus. Mettez-la en ligne chez eux (en « non répertoriée » si vous voulez), puis collez le lien ici.</p></div>
       <div class="media-grid">${list.map((m, i) => `<div class="media-tile ${m.visible ? "" : "media-tile--off"}">
-        <div class="media-tile__img">${m.kind === "video" ? `<span>▶ Vidéo<br><small>${/vimeo/i.test(m.url) ? "Vimeo" : "YouTube"}</small></span>` : m.url ? thumbImg(m.url, m.crop) : `<span>Emplacement</span>`}</div>
+        <div class="media-tile__img">${m.url ? thumbImg(m.url, m.crop) : `<span>Emplacement</span>`}</div>
         ${confirmId === m.id ? `<div class="confirm-box" style="margin:8px">Supprimer cette photo ?<div class="btn-row">
             <button type="button" class="btn btn--sm" data-action="media-cancel">Non</button><button type="button" class="btn btn--sm btn--dark" data-action="media-delete" data-id="${m.id}">Supprimer</button></div></div>`
           : `<input type="text" class="media-tile__cap" data-media-caption="${m.id}" maxlength="140" value="${esc(m.caption || "")}" placeholder="Légende (facultatif)" aria-label="Légende de la photo ${i + 1}">
@@ -1420,7 +1419,7 @@
           <span class="btn-row" style="flex-wrap:nowrap">
             <button type="button" class="icon-btn" data-action="media-move" data-id="${m.id}" data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="Avancer">${icon("left")}</button>
             <button type="button" class="icon-btn" data-action="media-move" data-id="${m.id}" data-dir="1" ${i === list.length - 1 ? "disabled" : ""} aria-label="Reculer">${icon("right")}</button>
-            ${m.url && m.kind !== "video" ? `<button type="button" class="icon-btn" data-action="media-crop" data-id="${m.id}" aria-label="Recadrer la photo ${i + 1}" title="Recadrer">${icon("crop")}</button>` : ""}
+            ${m.url ? `<button type="button" class="icon-btn" data-action="media-crop" data-id="${m.id}" aria-label="Recadrer la photo ${i + 1}" title="Recadrer">${icon("crop")}</button>` : ""}
             <button type="button" class="icon-btn" data-action="media-ask-delete" data-id="${m.id}" aria-label="Supprimer">${icon("x")}</button></span>
         </div>`}</div>`).join("")}</div>
       ${list.length ? "" : `<div class="empty">Aucune photo pour l'instant.</div>`}
@@ -1572,7 +1571,6 @@
             ${pill(c.status === "live" ? "confirmed" : "pending", c.status === "live" ? "En ligne" : c.status === "draft" ? "Brouillon" : "Suspendu")}</div>
             <label class="switch" style="margin-top:14px"><span><b>Apparaître dans l'annuaire PCW</b><small>Les élèves vous trouvent par ville ou par club dans l'annuaire des coachs PCW, avec un lien direct vers votre réservation.${c.status !== "live" ? " Visible dès la mise en ligne de votre site." : ""}</small></span>
               <input type="checkbox" id="s-directory" ${c.directory_listed !== false ? "checked" : ""}></label></section>
-          ${smsCard()}
           <section class="card"><h2>Paiement en ligne des séances <span class="pill pill--neutral">Prochainement disponible</span></h2>
             <p class="muted" style="margin:0;font-size:14px">Vos joueurs pourront bientôt régler leurs séances, stages et packs par carte directement sur votre site. Rien à faire de votre côté pour l'instant : vous continuez d'encaisser vous-même et de marquer « payé ».</p></section>
           <section class="card" id="push-card" data-scope="coach"></section>
@@ -1588,26 +1586,8 @@
         </div>
       </div>`;
   }
-  function smsCard() {
-    const c = S.coach;
-    const opts = (arr, val, fmt) => arr.map((o) => `<option value="${o}" ${String(o) === String(val) ? "selected" : ""}>${fmt(o)}</option>`).join("");
-    return `<section class="card" id="sms-card"><h2>Rappels SMS aux joueurs ${S.smsOn ? "" : '<span class="pill pill--neutral">Envoi bientôt disponible</span>'}</h2>
-      <p class="muted" style="margin:0 0 10px;font-size:14px">Un SMS de rappel est envoyé au joueur avant sa séance confirmée, avec le lien pour l'annuler. ${S.smsOn ? "" : "Vous pouvez déjà régler vos préférences : les envois démarreront dès que PCW activera le service."}</p>
-      <form id="sms-form" class="grid" style="gap:10px">
-        <label class="switch"><span><b>Activer les rappels SMS</b><small>Les joueurs sans numéro ou ayant refusé les SMS sont ignorés.</small></span><input type="checkbox" id="sms-on" ${c.sms_reminders ? "checked" : ""}></label>
-        <label class="switch"><span><b>Envoyer le rappel</b><small>Avant le début de la séance</small></span><select id="sms-hours">${opts([2, 4, 12, 24, 48], c.sms_reminder_hours || 24, (h) => `${h} h avant`)}</select></label>
-        <label class="switch"><span><b>Plafond par mois</b><small>Évite toute dépense imprévue${S.smsOn ? ` · ${S.smsUsed} envoyé${S.smsUsed > 1 ? "s" : ""} ce mois-ci` : ""}</small></span><select id="sms-cap">${opts([0, 20, 50, 100, 200, 500], c.sms_monthly_cap ?? 50, (n) => n ? `${n} SMS` : "Aucun envoi")}</select></label>
-        <div><button class="btn" type="submit">Enregistrer</button></div></form></section>`;
-  }
   AFTER.reglages = (page) => {
     bindCalForm(page);
-    const sf = page.querySelector("#sms-form");
-    if (sf) sf.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const patch = { sms_reminders: page.querySelector("#sms-on").checked, sms_reminder_hours: +page.querySelector("#sms-hours").value, sms_monthly_cap: +page.querySelector("#sms-cap").value };
-      try { Object.assign(S.coach, await S.api.updateCoach(S.coach.id, patch)); toast("Rappels SMS enregistrés"); }
-      catch (err) { toast(errMsg(err)); }
-    });
     loadTestimonial(page);
     pushInit();
     if (S.ui.scrollGoogle) { S.ui.scrollGoogle = false; const g = page.querySelector("#google"); if (g) g.scrollIntoView({ block: "start" }); }
@@ -3202,7 +3182,7 @@
     pay: async (el) => { await patchBooking(el.dataset.id, { payment_status: el.dataset.pay, ...(el.dataset.pay === "paid" ? { status: "completed" } : {}) }, el.dataset.pay === "paid" ? "Marquée payée" : "Marquée non payée"); render(); bookingDrawer(el.dataset.id); },
     "no-show": async (el) => { await patchBooking(el.dataset.id, { status: "no_show" }, "Absence notée"); render(); bookingDrawer(el.dataset.id); },
     "undo-no-show": async (el) => { await patchBooking(el.dataset.id, { status: "completed" }, "Séance marquée terminée"); render(); bookingDrawer(el.dataset.id); },
-    "save-notes": async (el) => { await patchBooking(el.dataset.id, { coach_notes: document.getElementById("b-notes").value.trim() || null }, "Notes enregistrées"); },
+    "save-notes": async (el) => { await patchBooking(el.dataset.id, { coach_notes: document.getElementById("b-notes").value.trim() || null, player_notes: document.getElementById("b-pnotes").value.trim() || null }, "Notes enregistrées"); },
     move: (el) => moveZone(el.dataset.id),
     "do-move": async (el) => {
       const b = S.bookings.find((x) => x.id === el.dataset.id);
@@ -3245,15 +3225,6 @@
       try { const r = await S.api.update("player_packs", cur.id, { payment_status: cur.payment_status === "paid" ? "unpaid" : "paid" });
         S.playerPacks[S.playerPacks.findIndex((x) => x.id === r.id)] = r; playerDrawer(r.player_id); } catch (e) { toast(errMsg(e)); }
     },
-    "add-video": async () => {
-      const inp = document.getElementById("vid-url"), url = (inp.value || "").trim();
-      if (!/^https:\/\/(www\.|m\.)?(youtube\.com\/(watch\?v=|shorts\/|embed\/)|youtu\.be\/|vimeo\.com\/)[A-Za-z0-9_./?=&%-]+$/i.test(url)) return toast("Collez un lien YouTube ou Vimeo complet (commençant par https://).");
-      try {
-        const pos = S.media.reduce((m, x) => Math.max(m, x.position), -1);
-        S.media.push(await S.api.insert("media", { coach_id: S.coach.id, url, kind: "video", caption: null, visible: true, position: pos + 1 }));
-        refreshGallery(); toast("Vidéo ajoutée au site");
-      } catch (e) { toast(errMsg(e)); }
-    },
     "edit-service": (el) => serviceDrawer(el.dataset.id),
     "save-service": (el) => saveService(el.dataset.id),
     "ask-delete-service": (el) => serviceDrawer(el.dataset.id, true),
@@ -3270,6 +3241,11 @@
       try { await S.api.remove("players", el.dataset.id); S.players = S.players.filter((p) => p.id !== el.dataset.id);
         S.bookings = S.bookings.map((b) => b.player_id === el.dataset.id ? { ...b, player_id: null, player: null } : b); closeDrawer(); toast("Fiche supprimée"); render(); }
       catch (e) { toast(errMsg(e)); }
+    },
+    "copy-space": async (el) => {
+      const p = playerById(el.dataset.id);
+      const url = new URL(`../mon-espace.html?t=${p.space_token}${S.coach.custom_domain ? "" : "&c=" + encodeURIComponent(S.coach.slug)}`, location.href).href;
+      try { await navigator.clipboard.writeText(url); toast("Lien copié : envoyez-le au joueur"); } catch { window.prompt("Copiez ce lien :", url); }
     },
     "export-csv": exportCsv,
     "msg-status": async (el) => {
