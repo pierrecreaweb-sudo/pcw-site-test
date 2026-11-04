@@ -19,6 +19,7 @@
 
   // ================================================================= icônes ===
   const I = {
+    bell: '<path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
     home: '<path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
     list: '<path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>',
     cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>',
@@ -1552,8 +1553,8 @@
     const badgeFor = (k) => k === "reviews" && d && d.pending_testimonials ? `<span class="badge">${d.pending_testimonials}</span>` : "";
     const items = [["overview", "Vue d'ensemble", "home"], ["coaches", "Coachs", "users"], ["billing", "Abonnements", "list"], ["reviews", "Avis des coachs", "star"]];
     const link = ([k, l, ic]) => `<a class="navlink" href="#pcw" data-action="pcw-tab" data-tab="${k}" ${tab === k ? 'aria-current="page"' : ""}>${icon(ic)}<span>${l}</span>${badgeFor(k)}</a>`;
-    const tabBtn = ([k, l, ic]) => `<a class="tab" href="#pcw" data-action="pcw-tab" data-tab="${k}" ${tab === k ? 'aria-current="page"' : ""}>${icon(ic)}<span>${k === "overview" ? "Ensemble" : k === "reviews" ? "Avis" : l}</span>${badgeFor(k)}</a>`;
-    app.innerHTML = `<div class="shell">
+    const tabBtn = ([k, l, ic]) => `<a class="tab" href="#pcw" data-action="pcw-tab" data-tab="${k}" ${tab === k ? 'aria-current="page"' : ""}>${icon(ic)}<span>${k === "overview" ? "Ensemble" : k === "reviews" ? "Avis" : k === "billing" ? "Factures" : l}</span>${badgeFor(k)}</a>`;
+    app.innerHTML = `<div class="shell shell--console">
       <aside class="side">
         <div class="side__brand"><span class="dot"></span><span>PCW PADEL COACH</span></div>
         <nav aria-label="Menu"><span class="nav-group">Console PCW</span>${items.map(link).join("")}
@@ -1567,7 +1568,7 @@
         </div>
       </aside>
       <main class="main"><div class="page" id="page"></div></main>
-      <nav class="tabbar" aria-label="Menu">${items.map(tabBtn).join("")}</nav>
+      <nav class="tabbar" aria-label="Menu">${items.map(tabBtn).join("")}<button type="button" class="tab" data-action="pcw-more">${icon("more")}<span>Plus</span></button></nav>
     </div>`;
     const page = document.getElementById("page");
     page.innerHTML = viewPcw();
@@ -1615,7 +1616,7 @@
       `<div title="${esc(dFr(w.week))} : ${w.count}" style="flex:1;display:grid;gap:4px;align-items:end;justify-items:center;height:100%"><span class="muted num" style="font-size:11px">${w.count}</span><span style="display:block;width:100%;height:${Math.max(3, Math.round((w.count / max) * 60))}px;background:var(--ball);border-radius:4px"></span></div>`).join("")}</div>
       <p class="muted" style="margin:6px 0 0;font-size:12px">Réservations par semaine, 8 dernières semaines.</p>` : "";
     const list = (items, row, empty) => items.length ? `<div class="rows">${items.map(row).join("")}</div>` : `<p class="muted" style="margin:0">${empty}</p>`;
-    const open = (id, title, sub, end) => `<button type="button" class="row" style="grid-template-columns:minmax(0,1fr) auto" data-action="pcw-coach" data-id="${id}">
+    const open = (id, title, sub, end) => `<button type="button" class="row row--wrap" data-action="pcw-coach" data-id="${id}">
       <span class="row__main"><span class="row__title">${esc(title)}</span><span class="row__sub" style="white-space:normal">${sub}</span></span><span class="row__end">${end || ""}</span></button>`;
     return `<div class="kpis">
         ${kpi("Coachs en ligne", `${c.live}<small style="font-size:14px;font-weight:600"> / ${c.total}</small>`, `${c.draft} brouillon${c.draft > 1 ? "s" : ""} · ${c.suspended} suspendu${c.suspended > 1 ? "s" : ""}`)}
@@ -1643,14 +1644,14 @@
     const row = (c) => {
       const bl = c.billing || {};
       const flags = [c.invite_pending ? "invitation non acceptée" : "", !c.services_count ? "sans prestation" : "", !c.locations_count ? "sans lieu" : "", !c.rules_count ? "sans horaire" : ""].filter(Boolean);
-      return `<button type="button" class="row" style="grid-template-columns:minmax(0,1fr) auto" data-action="pcw-coach" data-id="${c.id}">
+      return `<button type="button" class="row row--wrap" data-action="pcw-coach" data-id="${c.id}">
         <span class="row__main"><span class="row__title">${esc(c.display_name)}${c.city ? ` <span class="muted" style="font-weight:500">· ${esc(c.city)}</span>` : ""}</span>
           <span class="row__sub">${esc(c.custom_domain || c.slug)} · ${c.bookings_30d} réservation${c.bookings_30d > 1 ? "s" : ""} (30 j)${flags.length ? " · " + esc(flags.join(", ")) : ""}</span></span>
         <span class="row__end">${pill(...ST_LABEL[c.status] || ST_LABEL.draft)}${pill(...(PLAN[bl.plan_status] || PLAN.pending))}</span></button>`;
     };
     return `<div class="toolbar"><button type="button" class="btn btn--primary" data-action="pcw-new">+ Nouveau coach</button></div>
       <section class="card" id="pcw-new" ${S.ui.pcwNew ? "" : "hidden"}><h2>Nouveau coach</h2>${newCoachFormHtml()}</section>
-      <section class="card">${list.length ? `<div class="rows">${list.map(row).join("")}</div>` : `<div class="empty">Aucun coach.</div>`}</section>`;
+      <section class="card card--flush">${list.length ? `<div class="rows">${list.map(row).join("")}</div>` : `<div class="empty">Aucun coach.</div>`}</section>`;
   }
 
   function newCoachFormHtml() {
@@ -1697,7 +1698,7 @@
       const bl = c.billing || {};
       const late = bl.paid_until && bl.paid_until < ymdToday() && ["active", "overdue"].includes(bl.plan_status);
       const setup = bl.setup_waived ? "mise en ligne offerte" : bl.setup_paid_at ? `mise en ligne payée le ${dFr(bl.setup_paid_at)}` : `mise en ligne ${eur0(bl.setup_fee_cents)} à régler`;
-      return `<button type="button" class="row" style="grid-template-columns:minmax(0,1fr) auto" data-action="pcw-billing" data-id="${c.id}">
+      return `<button type="button" class="row row--wrap" data-action="pcw-billing" data-id="${c.id}">
         <span class="row__main"><span class="row__title">${esc(c.display_name)}</span>
           <span class="row__sub">${eur0(bl.monthly_cents)}/mois · ${bl.paid_until ? `payé jusqu'au ${dFr(bl.paid_until)}${late ? " (dépassé)" : ""}` : "aucun paiement noté"} · ${setup}</span></span>
         <span class="row__end">${pill(...(PLAN[bl.plan_status] || PLAN.pending))}</span></button>`;
@@ -1716,7 +1717,7 @@
   function pcwInvoicesHtml() {
     const inv = S.pcw.invoices || [];
     const st = S.pcw.settings || {};
-    const row = (i) => `<div class="row" style="grid-template-columns:minmax(0,1fr) auto;cursor:default">
+    const row = (i) => `<div class="row row--wrap" style="cursor:default">
         <span class="row__main"><span class="row__title">${esc(i.number)} · ${esc(i.coach_name || "")}</span>
           <span class="row__sub">${eur0(i.total_cents)} · émise le ${dFr(i.issued_on)} · échéance ${dFr(i.due_on)}${i.paid_on ? ` · payée le ${dFr(i.paid_on)}` : ""}</span></span>
         <span class="row__end">${pill(...INV_ST[i.status])}<span class="btn-row" style="gap:6px">
@@ -1892,6 +1893,23 @@
     "pcw-ask-delete": (el) => pcwCoachDrawer(el.dataset.id, { confirmDelete: true }),
     "pcw-billing": (el) => pcwBillingDrawer(el.dataset.id),
     "pcw-open-coach": (el) => enterCoach(el.dataset.id),
+    "pcw-more": () => openDrawer({
+      title: "Plus",
+      body: `<div class="sheet-menu">
+        <span class="sheet-menu__group">Console PCW</span>
+        <button type="button" data-action="pcw-goto-push">${icon("bell")} Notifications</button>
+        <a href="https://pcwpadel.fr/" target="_blank" rel="noopener">${icon("ext")} Page de vente pcwpadel.fr</a>
+        <span class="sheet-menu__group">Entrer dans le site d'un coach</span>
+        ${(S.coaches || []).length ? (S.coaches || []).map((c) => `<button type="button" data-action="pcw-open-coach" data-id="${c.id}">${icon("users")} ${esc(c.display_name)}</button>`).join("") : `<p class="muted" style="margin:0">Aucun coach pour le moment.</p>`}
+        <span class="sheet-menu__group">Compte</span>
+        <p class="muted" style="margin:0;font-size:13px">${esc((S.user && S.user.email) || "")}</p>
+        <button type="button" data-action="sign-out">${icon("out")} Se déconnecter</button></div>`,
+    }),
+    "pcw-goto-push": () => {
+      closeDrawer();
+      S.ui.pcwTab = "overview"; render();
+      setTimeout(() => { const c = document.getElementById("push-card"); if (c) c.scrollIntoView({ behavior: "smooth", block: "start" }); }, 400);
+    },
     "pcw-save": async (el) => {
       const id = el.dataset.id;
       const domain = gv("pf-domain").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");

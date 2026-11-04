@@ -525,3 +525,29 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .media-tile__bar .btn-row { width: 100%; justify-content: space-between; }
   .media-tile__cap { font-size: 13px !important; }
 }
+
+/* ------------------------------------------------- console PCW : version mobile --- */
+.row--wrap { grid-template-columns: minmax(0, 1fr) auto; }
+@media (max-width: 860px) {
+  .shell--console .main { padding-top: 14px; }
+  .shell--console .page__head { margin-bottom: 12px; }
+  .shell--console .page__head h1 { font-size: 22px; }
+  .shell--console .page__head p { font-size: 14px; margin-top: 2px; }
+  .shell--console .kpis, .shell--console .kpis--stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+  .shell--console .kpis--stats .kpi:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .shell--console .kpi { padding: 10px 12px; gap: 2px; }
+  .shell--console .kpi__label { font-size: 10.5px; letter-spacing: .06em; line-height: 1.25; }
+  .shell--console .kpi__value { font-size: 22px; }
+  .shell--console .kpi__value small { font-size: 13px; }
+  .shell--console .kpi__sub { font-size: 12px; line-height: 1.3; }
+  .shell--console .card { padding: 14px; }
+  .shell--console .card h2 { font-size: 16px; margin-bottom: 10px; flex-wrap: wrap; justify-content: flex-start; }
+  .shell--console .card--flush { background: none; border: 0; padding: 0; }
+  .shell--console .row { padding: 12px; }
+  .row--wrap { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .row--wrap .row__end { grid-column: auto; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 6px; }
+  .row--wrap .row__title, .row--wrap .row__sub { white-space: normal; overflow: visible; }
+  .shell--console .toolbar { margin-bottom: 12px; }
+  .shell--console .toolbar .btn { width: 100%; justify-content: center; }
+  .shell--console .tabbar .tab span { font-size: 10.5px; }
+}
