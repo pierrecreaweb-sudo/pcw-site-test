@@ -203,7 +203,8 @@
   }
 
   // ============================================================== rendu ===
-  function render() {
+  function render() { renderCore(); navTick(); }
+  function renderCore() {
     if (!S.api) return;
     if (S.recovery) return renderRecovery();
     if (!S.user) return renderLogin();
@@ -215,20 +216,19 @@
       return;
     }
     const v = currentView();
-    const pending = S.bookings.filter((b) => b.status === "pending" && !isPast(b)).length;
-    const unread = S.messages.filter((m) => m.status === "new").length;
-    const badgeFor = (key) => key === "reservations" && pending ? `<span class="badge">${pending}</span>` : key === "messages" && unread ? `<span class="badge">${unread}</span>` : "";
-    const navItem = (key) => `<a class="navlink" href="#${key}" ${v === key ? 'aria-current="page"' : ""}>${icon(VIEWS[key].icon)}<span>${VIEWS[key].label}</span>
+    const badgeFor = (key) => { const n = navCountOf(key); return n ? `<span class="badge">${n > 99 ? "99+" : n}</span>` : ""; };
+    const hot = (key) => (navCountOf(key) ? " has-notif" : "");
+    const navItem = (key) => `<a class="navlink${hot(key)}" href="#${key}" data-navkey="${key}" ${v === key ? 'aria-current="page"' : ""}>${icon(VIEWS[key].icon)}<span>${VIEWS[key].label}</span>
       ${badgeFor(key)}</a>`;
     const siteUrl = `../index.html?c=${encodeURIComponent(S.coach.slug)}`;
-    const tab = (k) => `<a class="tab" href="#${k}" ${v === k ? 'aria-current="page"' : ""}>${icon(VIEWS[k].icon)}<span>${VIEWS[k].short || VIEWS[k].label}</span>${badgeFor(k)}</a>`;
+    const tab = (k) => `<a class="tab${hot(k)}" href="#${k}" data-navkey="${k}" ${v === k ? 'aria-current="page"' : ""}>${icon(VIEWS[k].icon)}<span>${VIEWS[k].short || VIEWS[k].label}</span>${badgeFor(k)}</a>`;
     const inMore = !["dashboard", "reservations", "agenda", "messages"].includes(v);
     app.innerHTML = `<div class="shell">
       <aside class="side">
         <div class="side__brand"><span class="dot"></span><span>${esc(S.coach.display_name.toUpperCase())}</span></div>
         ${S.coaches.length > 1 ? `<select class="coach-switch" id="coach-switch" aria-label="Changer de coach">${S.coaches.map((c) =>
           `<option value="${c.id}" ${c.id === S.coach.id ? "selected" : ""}>${esc(c.display_name)}</option>`).join("")}</select>` : ""}
-        ${S.isAdmin && S.api.mode !== "demo" ? `<a class="navlink" href="#pcw" style="margin:0 0 10px;background:rgba(255,255,255,.08)">${icon("left")}<span>Console PCW</span></a>` : ""}
+        ${S.isAdmin && S.api.mode !== "demo" ? `<a class="navlink${navCountOf("console") ? " has-notif" : ""}" href="#pcw" data-navkey="console" style="margin:0 0 10px;background:rgba(255,255,255,.08)">${icon("left")}<span>Console PCW</span>${badgeFor("console")}</a>` : ""}
         <nav aria-label="Menu">${NAV_GROUPS.map((g) => `${g.title ? `<span class="nav-group">${g.title}</span>` : ""}${g.keys.map(navItem).join("")}`).join("")}</nav>
         <div class="side__foot">
           <a href="${siteUrl}" target="_blank" rel="noopener">Voir mon site ↗</a>
@@ -241,7 +241,7 @@
         ${tab("dashboard")}${tab("reservations")}
         <a class="tab tab--center" href="#agenda" ${v === "agenda" ? 'aria-current="page"' : ""}><span class="tab__bubble">${icon(VIEWS.agenda.icon)}</span><span>Agenda</span></a>
         ${tab("messages")}
-        <button type="button" class="tab" data-action="more" ${inMore ? 'aria-current="page"' : ""}>${icon("more")}<span>Plus</span></button>
+        <button type="button" class="tab${hot("more")}" data-action="more" data-navkey="more" ${inMore ? 'aria-current="page"' : ""}>${icon("more")}<span>Plus</span>${badgeFor("more")}</button>
       </nav>
     </div>`;
     const page = document.getElementById("page");
@@ -1458,6 +1458,73 @@
     } catch (e) { box.innerHTML = `<div class="alert alert--err">${esc(errMsg(e))}</div>`; }
   };
 
+  // ================================================================ compteurs de notifications par onglet ===
+  // Chaque événement (réservation, annulation, avis, message, facture...) est compté pour l'onglet concerné
+  // tant que l'onglet n'a pas été ouvert. Les compteurs viennent du serveur (nav_counts) : ils sont donc
+  // les mêmes sur tous les appareils, et repassent à zéro à l'ouverture de l'onglet (nav_mark_seen).
+  const NAV = { counts: {}, admin: {}, scope: null, last: 0 };
+  const navSum = (o) => Object.values(o).reduce((a, b) => a + (Number(b) || 0), 0);
+  function navCountOf(key) {
+    if (key === "console") return navSum(NAV.admin);
+    if (key === "more") return (NAV.counts.avis || 0) + (NAV.counts.factures || 0);
+    if (inConsole()) {
+      const d = S.pcw && S.pcw.dash;
+      return Math.max(NAV.admin[key] || 0, key === "reviews" && d ? d.pending_testimonials || 0 : 0);
+    }
+    const pending = key === "reservations" ? (S.bookings || []).filter((b) => b.status === "pending" && !isPast(b)).length : 0;
+    const unread = key === "messages" ? (S.messages || []).filter((m) => m.status === "new").length : 0;
+    return Math.max(NAV.counts[key] || 0, pending, unread);
+  }
+  function paintNav() {
+    document.querySelectorAll("[data-navkey]").forEach((el) => {
+      const n = navCountOf(el.dataset.navkey);
+      let b = el.querySelector(":scope > .badge");
+      if (n) {
+        if (!b) { b = document.createElement("span"); b.className = "badge"; el.appendChild(b); }
+        b.textContent = n > 99 ? "99+" : String(n);
+      } else if (b) b.remove();
+      el.classList.toggle("has-notif", n > 0);
+    });
+    try {
+      const total = inConsole() ? navSum(NAV.admin) : navSum(NAV.counts);
+      if (navigator.setAppBadge) { total ? navigator.setAppBadge(total) : navigator.clearAppBadge(); }
+    } catch { /* facultatif */ }
+  }
+  async function markCurrentSeen() {
+    if (!S.user) return;
+    const cons = inConsole();
+    const tab = cons ? (S.ui.pcwTab || "overview") : currentView();
+    const src = cons ? NAV.admin : NAV.counts;
+    if (!(src[tab] > 0)) return;
+    src[tab] = 0;
+    try { await S.api.navMarkSeen(cons ? null : S.coach && S.coach.id, tab); } catch { /* sera recompté */ }
+  }
+  async function refreshNav(force) {
+    if (!S.user || S.recovery) return;
+    const now = Date.now();
+    if (!force && now - NAV.last < 15000) return;
+    NAV.last = now;
+    try {
+      if (inConsole()) NAV.admin = (await S.api.navCounts(null)) || {};
+      else {
+        if (S.coach) NAV.counts = (await S.api.navCounts(S.coach.id)) || {};
+        if (S.isAdmin && S.api.mode !== "demo") NAV.admin = (await S.api.navCounts(null)) || {};
+      }
+    } catch { return; }
+    await markCurrentSeen();
+    paintNav();
+  }
+  function navTick() {
+    if (!S.user) { NAV.counts = {}; NAV.admin = {}; NAV.scope = null; return; }
+    const scope = inConsole() ? "admin" : S.coach && S.coach.id;
+    if (scope !== NAV.scope) { NAV.scope = scope; if (!inConsole()) NAV.counts = {}; NAV.last = 0; }
+    markCurrentSeen().then(paintNav);
+    refreshNav(false);
+  }
+  setInterval(() => { if (document.visibilityState === "visible") refreshNav(true); }, 45000);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refreshNav(true); });
+  if ("serviceWorker" in navigator) navigator.serviceWorker.addEventListener("message", (e) => { if (e.data && e.data.type === "refresh-nav") refreshNav(true); });
+
   // ================================================================ notifications push ===
   // Un appareil (navigateur ou application installée) s'abonne ; le serveur lui envoie une notification
   // à chaque réservation, annulation, avis ou message (fonction push-worker). Les choix par type sont
@@ -1587,10 +1654,11 @@
   function renderConsole() {
     const tab = S.ui.pcwTab || "overview";
     const d = S.pcw && S.pcw.dash;
-    const badgeFor = (k) => k === "reviews" && d && d.pending_testimonials ? `<span class="badge">${d.pending_testimonials}</span>` : "";
+    const badgeFor = (k) => { const n = navCountOf(k); return n ? `<span class="badge">${n > 99 ? "99+" : n}</span>` : ""; };
+    const hot = (k) => (navCountOf(k) ? " has-notif" : "");
     const items = [["overview", "Vue d'ensemble", "home"], ["coaches", "Coachs", "users"], ["billing", "Abonnements", "list"], ["reviews", "Avis des coachs", "star"]];
-    const link = ([k, l, ic]) => `<a class="navlink" href="#pcw" data-action="pcw-tab" data-tab="${k}" ${tab === k ? 'aria-current="page"' : ""}>${icon(ic)}<span>${l}</span>${badgeFor(k)}</a>`;
-    const tabBtn = ([k, l, ic]) => `<a class="tab" href="#pcw" data-action="pcw-tab" data-tab="${k}" ${tab === k ? 'aria-current="page"' : ""}>${icon(ic)}<span>${k === "overview" ? "Ensemble" : k === "reviews" ? "Avis" : k === "billing" ? "Factures" : l}</span>${badgeFor(k)}</a>`;
+    const link = ([k, l, ic]) => `<a class="navlink${hot(k)}" href="#pcw" data-navkey="${k}" data-action="pcw-tab" data-tab="${k}" ${tab === k ? 'aria-current="page"' : ""}>${icon(ic)}<span>${l}</span>${badgeFor(k)}</a>`;
+    const tabBtn = ([k, l, ic]) => `<a class="tab${hot(k)}" href="#pcw" data-navkey="${k}" data-action="pcw-tab" data-tab="${k}" ${tab === k ? 'aria-current="page"' : ""}>${icon(ic)}<span>${k === "overview" ? "Ensemble" : k === "reviews" ? "Avis" : k === "billing" ? "Factures" : l}</span>${badgeFor(k)}</a>`;
     app.innerHTML = `<div class="shell shell--console">
       <aside class="side">
         <div class="side__brand"><span class="dot"></span><span>PCW PADEL COACH</span></div>
@@ -1920,6 +1988,8 @@
     const val = (v) => esc(v || "");
     const money = (cents) => ((cents || 0) / 100).toString();
     const ends = b.live_since ? dFr(addMonthsYmd(b.live_since, b.commitment_months || 0)) : "—";
+    const waivedCount = S.pcw.coaches.filter((x) => x.billing && x.billing.setup_waived).length;
+    const offerOpen = !!b.setup_waived || waivedCount < 10;   // la case disparaît quand les 10 offres sont prises
     openDrawer({
       title: `Abonnement · ${c.display_name}`, wide: true,
       body: `<div class="form-grid">
@@ -1931,7 +2001,7 @@
           <label class="field"><span>Payé jusqu'au</span><input type="date" id="bf-paid" value="${val(b.paid_until)}"></label>
           <label class="field"><span>Mise en ligne (€)</span><input type="number" id="bf-setup" min="0" step="0.01" value="${money(b.setup_fee_cents)}"></label>
           <label class="field"><span>Mise en ligne payée le</span><input type="date" id="bf-setup-paid" value="${val(b.setup_paid_at)}"></label>
-          <label class="switch full"><span><b>Mise en ligne offerte</b><small>Offre des 10 premiers coachs</small></span><input type="checkbox" id="bf-waived" ${b.setup_waived ? "checked" : ""}></label>
+          ${offerOpen ? `<label class="switch full"><span><b>Mise en ligne offerte</b><small>Offre des 10 premiers coachs (${waivedCount} / 10)</small></span><input type="checkbox" id="bf-waived" ${b.setup_waived ? "checked" : ""}></label>` : ""}
           <label class="field full"><span>Résiliation demandée le</span><input type="date" id="bf-cancel" value="${val(b.cancel_requested_at)}"></label>
           <label class="field full"><span>Notes internes</span><textarea id="bf-notes" rows="3" maxlength="2000">${esc(b.notes || "")}</textarea></label>
         </div>`,
@@ -2045,7 +2115,7 @@
       const cents = (id) => Math.round((parseFloat(gv(id).replace(",", ".")) || 0) * 100);
       const patch = { plan_status: gv("bf-plan"), live_since: gv("bf-live"), commitment_months: parseInt(gv("bf-commit"), 10) || 0,
         monthly_cents: cents("bf-monthly"), paid_until: gv("bf-paid"), setup_fee_cents: cents("bf-setup"), setup_paid_at: gv("bf-setup-paid"),
-        setup_waived: document.getElementById("bf-waived").checked, cancel_requested_at: gv("bf-cancel"), notes: gv("bf-notes") };
+        setup_waived: (document.getElementById("bf-waived") || { checked: false }).checked, cancel_requested_at: gv("bf-cancel"), notes: gv("bf-notes") };
       try { await S.api.adminSetBilling(el.dataset.id, patch); toast("Abonnement enregistré"); closeDrawer(); await refreshPcw(); }
       catch (err) { toast(errMsg(err)); }
     },
@@ -2880,22 +2950,22 @@
         if (S.testimonial && S.testimonial.id === el.dataset.id) { S.testimonial = await S.api.getTestimonial(S.coach.id); renderTestimonial(document.getElementById("pcw-avis")); }
       } catch (err) { toast(errMsg(err)); }
     },
-    more: () => openDrawer({
+    more: () => { openDrawer({
       title: "Plus",
       body: `<div class="sheet-menu">
         <span class="sheet-menu__group">Au quotidien</span>
         <a href="#joueurs">${icon(VIEWS.joueurs.icon)} Joueurs</a>
         <span class="sheet-menu__group">Mon activité</span>
-        <a href="#statistiques">${icon("chart")} Statistiques</a><a href="#avis">${icon("star")} Avis des élèves</a>
+        <a href="#statistiques">${icon("chart")} Statistiques</a><a href="#avis" data-navkey="avis">${icon("star")} Avis des élèves</a>
         <span class="sheet-menu__group">Ma vitrine</span>
         <a href="#partager">${icon("share")} Partager ma page</a><a href="#mon-site">${icon("brush")} Mon site</a><a href="#prestations">${icon("tag")} Prestations et lieux</a>
         <span class="sheet-menu__group">Compte</span>
-        <a href="#factures">${icon("receipt")} Mes factures</a><a href="#reglages">${icon("gear")} Réglages</a>
-        ${S.isAdmin && S.api.mode !== "demo" ? `<span class="sheet-menu__group">Plateforme PCW</span><a href="#pcw">${icon("left")} Retour à la console PCW</a>` : ""}
+        <a href="#factures" data-navkey="factures">${icon("receipt")} Mes factures</a><a href="#reglages">${icon("gear")} Réglages</a>
+        ${S.isAdmin && S.api.mode !== "demo" ? `<span class="sheet-menu__group">Plateforme PCW</span><a href="#pcw" data-navkey="console">${icon("left")} Retour à la console PCW</a>` : ""}
         <a href="../index.html?c=${encodeURIComponent(S.coach.slug)}" target="_blank" rel="noopener">${icon("ext")} Voir mon site</a>
         <a href="../aide.html" target="_blank" rel="noopener">${icon("ext")} Aide et contact</a>
         <button type="button" data-action="sign-out">${icon("out")} Se déconnecter</button></div>`,
-    }),
+    }); paintNav(); },
     "new-booking": (el) => newBookingDrawer({ player_id: el.dataset.playerId }),
     "create-booking": (el) => createBookingFromDrawer(el),
     confirm: async (el) => { await patchBooking(el.dataset.id, { status: "confirmed" }, "Réservation validée, le joueur est prévenu"); closeDrawer(); render(); },

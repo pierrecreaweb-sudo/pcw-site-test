@@ -1,6 +1,6 @@
 // Service worker du back-office : met en cache l'interface pour un démarrage rapide
 // et un affichage hors ligne. Les données (Supabase) ne sont jamais mises en cache.
-const CACHE = "pcw-coach-v12";
+const CACHE = "pcw-coach-v13";
 const SHELL = ["./", "./index.html", "./admin.css", "./admin.js", "./icon.svg", "./icon-192.png", "./manifest.webmanifest",
   "../assets/config.js", "../assets/core.js", "../assets/demo-data.js", "../assets/api.js"];
 
@@ -28,6 +28,7 @@ self.addEventListener("fetch", (e) => {
 self.addEventListener("push", (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch { d = { title: "PCW Padel Coach", body: e.data ? e.data.text() : "" }; }
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => list.forEach((c) => c.postMessage({ type: "refresh-nav" }))));
   e.waitUntil(self.registration.showNotification(d.title || "PCW Padel Coach", {
     body: d.body || "",
     icon: "./icon-192.png",

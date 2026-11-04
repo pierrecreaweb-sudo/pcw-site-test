@@ -108,6 +108,9 @@
       coachInvoices: async (coachId) => unwrap(await sb.rpc("coach_invoices", { p_coach_id: coachId })) || { invoices: [], payment: {} },
       adminSetInvoicePaymentUrl: async (id, url) => { unwrap(await sb.rpc("admin_set_invoice_payment_url", { p_id: id, p_url: url || null })); },
       // ---- notifications push (appareil du navigateur)
+      // compteurs de notifications par onglet du menu
+      navCounts: async (coachId) => unwrap(await sb.rpc("nav_counts", { p_coach_id: coachId || null })) || {},
+      navMarkSeen: async (coachId, tab) => { unwrap(await sb.rpc("nav_mark_seen", { p_coach_id: coachId || null, p_tab: tab })); },
       pushPublicKey: async () => unwrap(await sb.rpc("push_public_key")),
       pushSubscribe: async (sub, label) => { unwrap(await sb.rpc("push_subscribe", { p_endpoint: sub.endpoint, p_p256dh: sub.p256dh, p_auth: sub.auth, p_label: label || null })); },
       pushUnsubscribe: async (endpoint) => { unwrap(await sb.rpc("push_unsubscribe", { p_endpoint: endpoint })); },
@@ -175,6 +178,7 @@
 
   // ============================================================ DÉMO =======
   const KEY = "pcw-demo-db";
+  const demoNavSeen = {};
   function demoBackend() {
     const store = P.storage();
     let db;
@@ -514,6 +518,10 @@
           ] });
       },
       adminSetInvoicePaymentUrl: async () => {},
+      navCounts: async (coachId) => (coachId
+        ? { avis: demoNavSeen.avis ? 0 : 2, factures: demoNavSeen.factures ? 0 : 1, reservations: demoNavSeen.reservations ? 0 : 3 }
+        : { coaches: demoNavSeen.coaches ? 0 : 1, billing: demoNavSeen.billing ? 0 : 2, reviews: demoNavSeen.reviews ? 0 : 1 }),
+      navMarkSeen: async (coachId, tab) => { demoNavSeen[tab] = true; },
       pushPublicKey: async () => null,
       pushSubscribe: async () => {}, pushUnsubscribe: async () => {}, pushGetPrefs: async () => ({}), pushSetPref: async () => {},
       pushTest: async () => ({ sent: 0 }),

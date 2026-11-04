@@ -592,3 +592,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .inv-amount { font: 800 22px/1.1 var(--f-display); white-space: nowrap; color: #1b6fa8; }
 .inv-note { margin: 0; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, #2C96D8 9%, var(--panel)); border: 1px solid color-mix(in srgb, #2C96D8 28%, transparent); font-size: 13.5px; line-height: 1.5; word-break: break-word; }
 @media (max-width: 520px) { .inv-card__top { flex-direction: column; gap: 4px; } }
+
+/* ---- pastilles de notifications par onglet */
+.has-notif { font-weight: 700; }
+.navlink.has-notif { background: rgba(44,150,216,.18); }
+.tab.has-notif { color: var(--brand, #2C96D8); }
+.tab.has-notif .badge, .navlink.has-notif .badge { animation: notif-pulse 2s ease-out 3; }
+@keyframes notif-pulse { 0% { box-shadow: 0 0 0 0 rgba(220,38,38,.55); } 100% { box-shadow: 0 0 0 9px rgba(220,38,38,0); } }
+.sheet-menu a .badge { margin-left: auto; }
+@media (prefers-reduced-motion: reduce) { .has-notif .badge { animation: none !important; } }
