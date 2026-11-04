@@ -37,7 +37,19 @@
 
   async function supabaseBackend() {
     if (!root.supabase) await loadScript("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js");
-    const sb = root.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
+    // « Rester connecté » : session gardée sur l'appareil (localStorage) ou seulement jusqu'à la fermeture de l'onglet/navigateur (sessionStorage).
+    const REMEMBER_KEY = "pcw_remember";
+    const safe = (fn, d = null) => { try { return fn(); } catch { return d; } };
+    const wantsRemember = () => safe(() => root.localStorage.getItem(REMEMBER_KEY), null) !== "0";
+    const authStorage = {
+      getItem: (k) => safe(() => root.sessionStorage.getItem(k)) ?? safe(() => root.localStorage.getItem(k)),
+      setItem: (k, v) => {
+        if (wantsRemember()) { safe(() => root.localStorage.setItem(k, v)); safe(() => root.sessionStorage.removeItem(k)); }
+        else { safe(() => root.sessionStorage.setItem(k, v)); safe(() => root.localStorage.removeItem(k)); }
+      },
+      removeItem: (k) => { safe(() => root.localStorage.removeItem(k)); safe(() => root.sessionStorage.removeItem(k)); },
+    };
+    const sb = root.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY, { auth: { storage: authStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
     const unwrap = ({ data, error }) => { if (error) throw fromPg(error); return data; };
     const bookingSelect = "*, player:players(*), location:locations(*)";
 
@@ -63,6 +75,8 @@
 
       // ---- authentification coach
       getUser: async () => (await sb.auth.getUser()).data.user || null,
+      getRemember: () => wantsRemember(),
+      setRemember: (yes) => { safe(() => root.localStorage.setItem(REMEMBER_KEY, yes ? "1" : "0")); },
       signIn: async (email, password) => { unwrap(await sb.auth.signInWithPassword({ email, password })); },
       sendMagicLink: async (email) => { unwrap(await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false, emailRedirectTo: root.location.href.split("#")[0] } })); },
       resetPassword: async (email) => { unwrap(await sb.auth.resetPasswordForEmail(email, { redirectTo: root.location.href.split("#")[0] })); },
@@ -396,6 +410,8 @@
 
       // ---- authentification (démo : tout identifiant est accepté)
       getUser: async () => delay(session),
+      getRemember: () => true,
+      setRemember: () => {},
       signIn: async (email) => {
         session = { id: "demo-user", email: email || "coach@exemple.fr" };
         try { store && store.setItem(KEY + "-session", JSON.stringify(session)); } catch { /* ignore */ }

@@ -265,6 +265,7 @@
       <form id="login-form" novalidate>
         <label class="field"><span>Email</span><input type="email" id="l-email" autocomplete="email" required value="${demo ? "coach@exemple.fr" : ""}"></label>
         <label class="field"><span>Mot de passe</span><input type="password" id="l-pass" autocomplete="current-password" ${demo ? 'placeholder="Pas nécessaire en démo"' : "required"}></label>
+        <label class="remember"><input type="checkbox" id="l-remember" ${S.api.getRemember && S.api.getRemember() ? "checked" : ""}><span>Rester connecté sur cet appareil</span></label>
         ${msg ? `<div class="alert alert--${kind}" role="alert">${esc(msg)}</div>` : ""}
         <button type="submit" class="btn btn--primary btn--block">Se connecter</button>
         <div class="links">
@@ -272,6 +273,8 @@
           <button type="button" class="btn btn--sm" data-action="forgot">Mot de passe oublié</button>
         </div>
       </form></div></div>`;
+    const remember = document.getElementById("l-remember");
+    if (remember) remember.addEventListener("change", () => S.api.setRemember && S.api.setRemember(remember.checked));
     document.getElementById("login-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const email = document.getElementById("l-email").value.trim();

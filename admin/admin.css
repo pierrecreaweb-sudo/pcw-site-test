@@ -601,3 +601,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 @keyframes notif-pulse { 0% { box-shadow: 0 0 0 0 rgba(220,38,38,.55); } 100% { box-shadow: 0 0 0 9px rgba(220,38,38,0); } }
 .sheet-menu a .badge { margin-left: auto; }
 @media (prefers-reduced-motion: reduce) { .has-notif .badge { animation: none !important; } }
+
+/* ---- case « Rester connecté » */
+.login .remember { display: flex; align-items: center; gap: 10px; margin: 2px 0 12px; font-size: 14px; color: var(--ink); cursor: pointer; }
+.login .remember input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
