@@ -63,8 +63,20 @@
       registerStage: async (slug, r) => unwrap(await sb.rpc("public_register_stage", {
         p_slug: slug, p_stage_id: r.stage_id, p_first_name: r.first_name, p_last_name: r.last_name || "",
         p_email: r.email, p_phone: r.phone, p_party_size: r.party_size || 1, p_message: r.message || null })),
-      playerSpace: async (token) => unwrap(await sb.rpc("public_player_space", { p_token: token })),
-      requestPlayerSpace: async (slug, email) => !!unwrap(await sb.rpc("public_request_player_space", { p_slug: slug, p_email: email })),
+      playerLogin: async (slug, email, password) => {
+        const r = unwrap(await sb.rpc("public_player_login", { p_slug: slug, p_email: email, p_password: password }));
+        if (r && r.error) throw new ApiError(r.message || "Email ou mot de passe incorrect.", r.error);
+        return r.session;
+      },
+      playerRequestAccess: async (slug, email) => !!unwrap(await sb.rpc("public_player_request_access", { p_slug: slug, p_email: email })),
+      playerSetPassword: async (token, password) => {
+        const r = unwrap(await sb.rpc("public_player_set_password", { p_token: token, p_password: password }));
+        if (!r || r.error || !r.session) throw new ApiError((r && r.message) || "Ce lien n'est plus valide. Demandez-en un nouveau.", (r && r.error) || "INVALID_TOKEN");
+        return r.session;
+      },
+      playerSpace: async (session) => unwrap(await sb.rpc("public_player_space", { p_session: session })),
+      playerLogout: async (session) => { try { await sb.rpc("public_player_logout", { p_session: session }); } catch {} return true; },
+      setPlayerOptoutSession: async (session, optout) => !!unwrap(await sb.rpc("public_player_set_optout_session", { p_session: session, p_optout: !!optout })),
       setPlayerOptout: async (token, optout) => !!unwrap(await sb.rpc("public_player_set_optout", { p_token: token, p_optout: !!optout })),
       book: async (slug, b) => unwrap(await sb.rpc("public_book", {
         p_slug: slug, p_service_id: b.service_id, p_starts_at: b.starts_at, p_first_name: b.first_name,
@@ -386,6 +398,17 @@
         return delay({ id: row.id, status: "pending", stage_title: st.title, starts_at: st.starts_at, ends_at: st.ends_at, places_left: left - party });
       },
       // Démo : le lien « ?t=demo » ouvre l'espace du premier joueur du coach modèle.
+      playerLogin: async (slug, email, password) => {
+        if (!/^demo/i.test(String(password)) ) throw new ApiError("Email ou mot de passe incorrect. (Démo : tapez un mot de passe commençant par « demo ».)", "BAD_LOGIN");
+        return delay("demo");
+      },
+      playerSetPassword: async () => delay("demo"),
+      playerLogout: async () => delay(true),
+      setPlayerOptoutSession: async (s, optout) => {
+        const p = (db.players || []).filter((x) => x.coach_id === coachBySlug("demo").id)[0];
+        if (p) { p.marketing_optout = !!optout; save(); }
+        return delay(true);
+      },
       playerSpace: async (token) => {
         if (token !== "demo") return delay(null);
         const c = coachBySlug("demo");
@@ -405,7 +428,7 @@
           stages: [],
         }));
       },
-      requestPlayerSpace: async () => delay(true),
+      playerRequestAccess: async () => delay(true),
       setPlayerOptout: async (token, optout) => {
         const p = (db.players || []).filter((x) => x.coach_id === coachBySlug("demo").id)[0];
         if (p) { p.marketing_optout = !!optout; save(); }

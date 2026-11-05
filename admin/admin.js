@@ -1129,7 +1129,6 @@
         ${id ? playerPacksHtml(id) : ""}
         ${st && st.all.length ? `<div><div class="day-head">Historique</div><div class="rows">${[...st.all].reverse().slice(0, 30).map((b) => bookingRow(b, { showDate: true })).join("")}</div></div>` : ""}`,
       foot: `<button class="btn btn--primary" data-action="save-player" data-id="${id || ""}">Enregistrer</button>
-        ${id && p.space_token ? `<button class="btn" data-action="copy-space" data-id="${id}">Copier le lien de son espace</button>` : ""}
         ${id ? `<button class="btn" data-action="new-booking" data-player-id="${id}">Réserver une séance</button><button class="btn btn--danger" data-action="ask-delete-player" data-id="${id}">Supprimer</button>` : ""}`,
     });
   }
@@ -3241,11 +3240,6 @@
       try { await S.api.remove("players", el.dataset.id); S.players = S.players.filter((p) => p.id !== el.dataset.id);
         S.bookings = S.bookings.map((b) => b.player_id === el.dataset.id ? { ...b, player_id: null, player: null } : b); closeDrawer(); toast("Fiche supprimée"); render(); }
       catch (e) { toast(errMsg(e)); }
-    },
-    "copy-space": async (el) => {
-      const p = playerById(el.dataset.id);
-      const url = new URL(`../mon-espace.html?t=${p.space_token}${S.coach.custom_domain ? "" : "&c=" + encodeURIComponent(S.coach.slug)}`, location.href).href;
-      try { await navigator.clipboard.writeText(url); toast("Lien copié : envoyez-le au joueur"); } catch { window.prompt("Copiez ce lien :", url); }
     },
     "export-csv": exportCsv,
     "msg-status": async (el) => {
