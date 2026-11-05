@@ -77,6 +77,7 @@
         return r.session;
       },
       playerSpace: async (session) => unwrap(await sb.rpc("public_player_space", { p_session: session })),
+      spaceCall: async (session, name, args) => unwrap(await sb.rpc("public_player_" + name, { p_session: session, ...(args || {}) })),
       playerLogout: async (session) => { try { await sb.rpc("public_player_logout", { p_session: session }); } catch {} return true; },
       setPlayerOptoutSession: async (session, optout) => !!unwrap(await sb.rpc("public_player_set_optout_session", { p_session: session, p_optout: !!optout })),
       setPlayerOptout: async (token, optout) => !!unwrap(await sb.rpc("public_player_set_optout", { p_token: token, p_optout: !!optout })),
@@ -430,24 +431,62 @@
         if (p) { p.marketing_optout = !!optout; save(); }
         return delay(true);
       },
+      // Démo : l'espace joueur d'exemple (premier joueur du coach modèle). Objectifs, messages, alertes sont gardés en mémoire du navigateur.
       playerSpace: async (token) => {
         if (token !== "demo") return delay(null);
         const c = coachBySlug("demo");
         const p = (db.players || []).filter((x) => x.coach_id === c.id)[0];
         if (!p) return delay(null);
+        const ds = (db.demo_space = db.demo_space || { goals: [], messages: [], waitlist: [], prefs: { pref_reminders: true, pref_pack_alerts: true, pref_messages: true } });
+        if (!ds.skills) ds.skills = [["Bandeja", 3, 4], ["Volée", 2, 2], ["Service", 4, 4]].flatMap(([s, a1, b1]) => [{ skill: s, level: a1, rated_at: new Date(Date.now() - 40 * 864e5).toISOString() }, { skill: s, level: b1, rated_at: new Date(Date.now() - 6 * 864e5).toISOString() }]);
         const locName = (id) => ((db.locations || []).find((l) => l.id === id) || {}).name || null;
         const bs = db.bookings.filter((b) => b.player_id === p.id);
         const now = Date.now();
+        const past = bs.filter((b) => ["confirmed", "completed"].includes(b.status) && new Date(b.ends_at) <= now);
+        const last = bs.filter((b) => ["confirmed", "completed", "pending"].includes(b.status)).sort((a, b) => b.starts_at.localeCompare(a.starts_at))[0];
+        const sv = (db.services || []).filter((s) => s.coach_id === c.id && s.active);
+        const skills = [...new Set(ds.skills.map((x) => x.skill))].map((s) => { const h = ds.skills.filter((x) => x.skill === s).sort((a, b) => a.rated_at.localeCompare(b.rated_at)); const l = h[h.length - 1], pv = h[h.length - 2]; return { skill: s, level: l.level, previous: pv ? pv.level : null, rated_at: l.rated_at }; });
         return delay(clone({
-          coach: { slug: c.slug, display_name: c.display_name, timezone: c.timezone },
-          player: { first_name: p.first_name, last_name: p.last_name, level: p.level, marketing_optout: !!p.marketing_optout },
+          coach: { slug: c.slug, display_name: c.display_name, timezone: c.timezone, cancel_hours: c.cancel_hours || 24 },
+          player: { first_name: p.first_name, last_name: p.last_name, level: p.level, email: p.email || "joueur@exemple.fr", phone: p.phone || "0612345678", marketing_optout: !!p.marketing_optout, ...ds.prefs },
+          last_service: last ? { service_id: last.service_id } : null,
+          services: sv.map((s) => ({ id: s.id, name: s.name, duration_minutes: s.duration_minutes, price_cents: s.price_cents })),
           upcoming: bs.filter((b) => ["pending", "confirmed"].includes(b.status) && new Date(b.starts_at) > now).sort((a, b) => a.starts_at.localeCompare(b.starts_at))
-            .map((b) => ({ starts_at: b.starts_at, ends_at: b.ends_at, service_name: b.service_name, status: b.status, location: locName(b.location_id), cancel_token: b.cancel_token })),
+            .map((b) => ({ starts_at: b.starts_at, ends_at: b.ends_at, service_name: b.service_name, status: b.status, location: locName(b.location_id), address: null, cancel_token: b.cancel_token })),
           history: bs.filter((b) => ["confirmed", "completed", "no_show"].includes(b.status) && new Date(b.starts_at) <= now).sort((a, b) => b.starts_at.localeCompare(a.starts_at)).slice(0, 60)
-            .map((b) => ({ starts_at: b.starts_at, service_name: b.service_name, status: b.status, location: locName(b.location_id), player_notes: b.player_notes || null, pack_name: null })),
+            .map((b, i) => ({ starts_at: b.starts_at, service_name: b.service_name, status: b.status, location: locName(b.location_id), player_notes: b.player_notes || null, pack_name: null, review_token: i === 0 && b.status !== "no_show" ? "demo-review" : null })),
           packs: (db.player_packs || []).filter((x) => x.player_id === p.id).map((x) => ({ name: x.name, sessions_total: x.sessions_total, sessions_used: x.sessions_used, expires_at: x.expires_at, payment_status: x.payment_status })),
           stages: [],
+          goals: ds.goals.filter((g) => g.status !== "cancelled"),
+          skills, skill_history: ds.skills,
+          messages: ds.messages,
+          waitlist: ds.waitlist.filter((w) => w.status !== "cancelled"),
+          stats: { total: past.length, minutes: past.reduce((n, b) => n + (new Date(b.ends_at) - new Date(b.starts_at)) / 60000, 0), this_month: past.filter((b) => b.starts_at.slice(0, 7) === new Date().toISOString().slice(0, 7)).length, first_at: past.length ? past.map((b) => b.starts_at).sort()[0] : null, top_service: past.length ? past[0].service_name : null, streak_weeks: 3 },
         }));
+      },
+      spaceCall: async function (session, name, args) {
+        const c = coachBySlug("demo");
+        const p = (db.players || []).filter((x) => x.coach_id === c.id)[0];
+        const ds = (db.demo_space = db.demo_space || { goals: [], messages: [], waitlist: [], prefs: { pref_reminders: true, pref_pack_alerts: true, pref_messages: true } });
+        const a = args || {};
+        switch (name) {
+          case "book": {
+            const s = (db.services || []).find((x) => x.id === a.p_service_id);
+            if (!s) throw new ApiError("Cette prestation n'est plus disponible.", "SERVICE_UNAVAILABLE");
+            return this.book("demo", { service_id: s.id, starts_at: a.p_starts_at, first_name: p.first_name, last_name: p.last_name || "", email: p.email || "joueur@exemple.fr", phone: p.phone || "0612345678", party_size: 1 });
+          }
+          case "goal_add": ds.goals.push({ id: P.uuid(), title: String(a.p_title).trim(), progress: 0, status: "active", created_by: "player" }); break;
+          case "goal_set": { const g = ds.goals.find((x) => x.id === a.p_id); if (g) { g.progress = a.p_status === "done" ? 100 : a.p_progress; g.status = a.p_status; } break; }
+          case "message_send": ds.messages.push({ id: P.uuid(), sender: "player", body: String(a.p_body), created_at: new Date().toISOString(), unread: false }); break;
+          case "messages_read": ds.messages.forEach((m) => { m.unread = false; }); break;
+          case "waitlist_add": { const s = (db.services || []).find((x) => x.id === a.p_service_id); ds.waitlist.push({ id: P.uuid(), wanted_date: a.p_date, service_name: s ? s.name : "Séance", status: "waiting" }); break; }
+          case "waitlist_cancel": { const w = ds.waitlist.find((x) => x.id === a.p_id); if (w) w.status = "cancelled"; break; }
+          case "update_profile": ds.prefs = { pref_reminders: !!a.p_pref_reminders, pref_pack_alerts: !!a.p_pref_pack_alerts, pref_messages: !!a.p_pref_messages }; if (p) { p.phone = a.p_phone; p.email = a.p_email; p.marketing_optout = !!a.p_marketing_optout; } break;
+          case "change_password": if (!/^demo/i.test(String(a.p_old))) return delay({ error: "BAD_PASSWORD", message: "Le mot de passe actuel est incorrect. (Démo : « demo1234 »)" }); return delay({ ok: true });
+          case "export": return delay({ exported_at: new Date().toISOString(), profil: { prenom: p.first_name, nom: p.last_name }, note: "Export de démonstration" });
+          case "delete_account": if (!/^demo/i.test(String(a.p_password))) return delay({ error: "BAD_PASSWORD", message: "Le mot de passe est incorrect. (Démo : « demo1234 »)" }); return delay({ ok: true });
+        }
+        save(); return delay(true);
       },
       playerRequestAccess: async () => delay(true),
       setPlayerOptout: async (token, optout) => {

@@ -10,7 +10,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link id="font-link" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Hanken+Grotesk:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="assets/site.css?v=mw2tv29m">
+<link rel="manifest" href="manifest-espace.webmanifest">
+<meta name="theme-color" content="#0E2A52">
+<link rel="apple-touch-icon" href="admin/apple-touch-icon.png">
+<link rel="stylesheet" href="assets/site.css?v=mw2uf5aw">
 <style>
   .space { display: grid; gap: 18px; padding: 28px 0 56px; max-width: 760px; margin: 0 auto; }
   .space h2 { margin: 0 0 12px; font: 800 20px/1.2 var(--f-display); color: var(--brand); }
@@ -23,6 +26,37 @@
   .space .bar > i { display: block; height: 100%; background: var(--brand); border-radius: 999px; }
   .space .check { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; }
   .space .check input { margin-top: 4px; }
+  .tabs { position: sticky; top: 0; z-index: 5; display: flex; gap: 4px; padding: 8px 0; margin: 0 auto; max-width: 760px; background: var(--bg, #fff); overflow-x: auto; }
+  .tabs button { flex: 1 0 auto; border: 1px solid var(--line); background: #fff; color: var(--brand); border-radius: 999px; padding: 9px 16px; font: 700 14px/1 var(--f-body, inherit); cursor: pointer; white-space: nowrap; }
+  .tabs button[aria-current="true"] { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .tabs .dot { display: inline-block; min-width: 18px; padding: 2px 5px; margin-left: 6px; border-radius: 999px; background: #D4F25A; color: #14201a; font-size: 11px; }
+  .space .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+  .space .stat { padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+  .space .stat b { display: block; font: 800 24px/1.1 var(--f-display); color: var(--brand); }
+  .space .stat span { color: var(--muted); font-size: 13px; }
+  .space .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .space .badge { padding: 6px 10px; border-radius: 999px; background: #F4F8D6; color: var(--brand); font-size: 13px; font-weight: 700; }
+  .space .badge.off { background: #eef0ee; color: #8a948d; font-weight: 500; }
+  .space .slotbtns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .space .slotbtns button, .space .linkbtn { border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 9px 12px; font: 600 14px/1.2 inherit; color: var(--brand); cursor: pointer; }
+  .space .slotbtns button[aria-pressed="true"] { background: var(--brand); color: #fff; }
+  .space .row2 { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 8px; }
+  .space select, .space input[type=date], .space input[type=text], .space input[type=email], .space input[type=tel], .space input[type=password], .space textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font: inherit; background: #fff; }
+  .space label.f { display: block; margin: 10px 0 4px; font-weight: 600; font-size: 14px; }
+  .space .alert { margin: 10px 0 0; }
+  .space .banner { padding: 12px 14px; border-radius: 12px; background: #FFF4D6; color: #5a4300; font-size: 15px; }
+  .space .thread { display: grid; gap: 8px; max-height: 420px; overflow-y: auto; padding: 4px 2px; }
+  .space .msg { max-width: 85%; padding: 9px 12px; border-radius: 14px; background: #eef1ee; white-space: pre-wrap; font-size: 15px; }
+  .space .msg.me { justify-self: end; background: var(--brand); color: #fff; }
+  .space .msg small { display: block; opacity: .7; font-size: 11px; margin-top: 3px; }
+  .space .skill { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .space .skill:last-child { border-bottom: 0; }
+  .space .dots i { display: inline-block; width: 12px; height: 12px; margin-left: 3px; border-radius: 50%; background: var(--line); }
+  .space .dots i.on { background: var(--brand); }
+  .space .danger { border-color: #e7b4b4; }
+  .space .btn--danger { background: #b3261e; color: #fff; }
+  .space .gl { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .space .gl a, .space .gl button { font-size: 13px; }
 </style>
 </head>
 <body>
@@ -34,30 +68,36 @@
 <main class="wrap">
   <div class="space" id="space" aria-live="polite"><div class="panel"><div class="skeleton"></div><div class="skeleton" style="margin-top:12px;width:60%"></div></div></div>
 </main>
-<script src="assets/config.js?v=mw2tv29m"></script>
-<script src="assets/core.js?v=mw2tv29m"></script>
-<script src="assets/demo-data.js?v=mw2tv29m"></script>
-<script src="assets/api.js?v=mw2tv29m"></script>
+<script src="assets/config.js?v=mw2uf5aw"></script>
+<script src="assets/core.js?v=mw2uf5aw"></script>
+<script src="assets/demo-data.js?v=mw2uf5aw"></script>
+<script src="assets/api.js?v=mw2uf5aw"></script>
 <script>
 (function () {
   "use strict";
   const P = window.PCW, esc = P.esc;
   const el = document.getElementById("space");
   const params = new URLSearchParams(location.search);
-  const act = params.get("a") || "";      // lien d'activation (choix du mot de passe)
-  const unsub = params.get("u") || "";    // lien de désinscription des annonces
+  const act = params.get("a") || "";
+  const unsub = params.get("u") || "";
   const slug = params.get("c") || P.currentSlug();
   const cq = params.get("c") ? "?c=" + encodeURIComponent(params.get("c")) : "";
+  const cq2 = params.get("c") ? "&c=" + encodeURIComponent(params.get("c")) : "";
   const home = `index.html${cq}`;
   document.getElementById("brand").href = home;
   const KEY = "pcw-player-" + slug;
   let api, data = null, lastEmail = "", session = "", mode = params.get("m") === "ask" ? "ask" : "login", busy = false, err = "", info = "", done = false;
+  let tab = ["home", "progress", "messages", "settings"].includes(params.get("tab")) ? params.get("tab") : "home";
+  const ui = { sid: "", slots: null, slotsFor: "", more: false, pick: "", wlDate: "", note: "", noteErr: "", installEvt: null, exportBusy: false, confirmDel: false };
   const ST = { confirmed: "Confirmée", pending: "À valider", completed: "Terminée", no_show: "Absent" };
+  const SKILL_LIST = ["Service", "Volée", "Bandeja", "Víbora", "Smash", "Chiquita", "Bajada", "Défense (vitres)", "Lob", "Déplacements", "Tactique"];
   const getS = () => { try { return localStorage.getItem(KEY) || ""; } catch { return ""; } };
   const setS = (v) => { try { v ? localStorage.setItem(KEY, v) : localStorage.removeItem(KEY); } catch {} };
   const errBox = () => err ? `<p class="alert alert--err" role="alert">${esc(err)}</p>` : "";
-  const btn = (t, w) => `<div class="actions" style="margin-top:12px"><button class="btn btn--brand" type="submit" ${busy ? "disabled" : ""}>${busy ? "Un instant…" : t}</button></div>`;
+  const btn = (t) => `<div class="actions" style="margin-top:12px"><button class="btn btn--brand" type="submit" ${busy ? "disabled" : ""}>${busy ? "Un instant…" : t}</button></div>`;
+  const euro = (c) => P.fmtPrice(c);
 
+  // ------------------------------------------------------------ connexion ---
   function loginView() {
     if (mode === "ask") return `<div class="panel">
       <p class="eyebrow eyebrow--brand">Espace joueur</p>
@@ -68,7 +108,7 @@
     return `<div class="panel">
       <p class="eyebrow eyebrow--brand">Espace joueur</p>
       <h1 class="h2" style="font-size:30px">Connexion</h1>
-      <p class="muted">Retrouvez votre historique de séances, vos packs et les points travaillés avec votre coach.</p>
+      <p class="muted">Retrouvez votre historique de séances, vos packs, vos objectifs et les points travaillés avec votre coach.</p>
       <form id="login" class="field" novalidate>
         <label for="l-email">Votre email</label><input id="l-email" type="email" autocomplete="username" required maxlength="200" value="${esc(lastEmail)}">
         <label for="l-pass" style="margin-top:10px">Mot de passe</label><input id="l-pass" type="password" autocomplete="current-password" required maxlength="100">
@@ -77,19 +117,17 @@
       <p class="sub" style="margin:6px 0 0">Réservé aux joueurs ayant déjà pris un cours avec ce coach.</p>
       ${slug === "demo" ? `<p class="muted" style="margin-top:14px">Démo : n'importe quel email, mot de passe « demo1234 ».</p>` : ""}</div>`;
   }
-
   function activateView() {
-    if (done) return `<div class="panel"><h1 class="h3">Mot de passe enregistré</h1><p class="muted">Votre espace est prêt. Pour vous reconnecter plus tard, utilisez votre email et ce mot de passe.</p><a class="btn btn--brand" href="mon-espace.html${cq}">Ouvrir mon espace</a></div>`;
+    if (done) return `<div class="panel"><h1 class="h3">Mot de passe enregistré</h1><p class="muted">Votre espace est prêt.</p><a class="btn btn--brand" href="mon-espace.html${cq}">Ouvrir mon espace</a></div>`;
     return `<div class="panel">
       <p class="eyebrow eyebrow--brand">Espace joueur</p>
       <h1 class="h2" style="font-size:30px">Choisissez votre mot de passe</h1>
       <p class="muted">Au moins 8 caractères. Vous l'utiliserez avec votre email pour vous connecter, sans recevoir de nouveau lien.</p>
       <form id="setpw" class="field" novalidate>
-        <label for="p1">Mot de passe</label><input id="p1" type="password" autocomplete="new-password" minlength="8" required maxlength="100">
-        <label for="p2" style="margin-top:10px">Confirmez le mot de passe</label><input id="p2" type="password" autocomplete="new-password" minlength="8" required maxlength="100">
+        <label for="p1">Mot de passe</label><input id="p1" type="password" autocomplete="new-password" minlength="8" required maxlength="72">
+        <label for="p2" style="margin-top:10px">Confirmez le mot de passe</label><input id="p2" type="password" autocomplete="new-password" minlength="8" required maxlength="72">
         ${errBox()}${btn("Enregistrer et entrer")}</form></div>`;
   }
-
   function unsubView() {
     return `<div class="panel"><p class="eyebrow eyebrow--brand">Annonces de stages</p>
       <h1 class="h2" style="font-size:30px">${info ? "C'est noté" : "Ne plus recevoir les annonces"}</h1>
@@ -98,37 +136,186 @@
       <p style="margin:14px 0 0"><a href="${home}">Retour au site</a></p></div>`;
   }
 
-  function spaceView() {
+  // -------------------------------------------------------------- agenda ---
+  const icsDate = (d) => new Date(d).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  const icsText = (v) => String(v || "").replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/;/g, "\;").replace(/,/g, "\\,");
+  function buildIcs(list) {
+    const L = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//PCW Padel Coach//Espace joueur//FR", "CALSCALE:GREGORIAN"];
+    list.forEach((u, i) => L.push("BEGIN:VEVENT", `UID:${icsDate(u.starts_at)}-${i}@pcw-padel`, `DTSTAMP:${icsDate(new Date())}`, `DTSTART:${icsDate(u.starts_at)}`, `DTEND:${icsDate(u.ends_at)}`,
+      `SUMMARY:${icsText(u.service_name + " avec " + data.coach.display_name)}`, ...(u.location ? [`LOCATION:${icsText([u.location, u.address].filter(Boolean).join(", "))}`] : []), "END:VEVENT"));
+    L.push("END:VCALENDAR");
+    return L.join("\r\n");
+  }
+  function download(name, text, type) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type: type || "text/calendar;charset=utf-8" }));
+    a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+  const gcal = (u) => "https://calendar.google.com/calendar/render?action=TEMPLATE&text=" + encodeURIComponent(u.service_name + " avec " + data.coach.display_name)
+    + "&dates=" + icsDate(u.starts_at) + "/" + icsDate(u.ends_at) + (u.location ? "&location=" + encodeURIComponent([u.location, u.address].filter(Boolean).join(", ")) : "");
+
+  // --------------------------------------------------------------- vues ---
+  const barHtml = (pct, label) => `<div class="bar" role="img" aria-label="${esc(label)}"><i style="width:${pct}%"></i></div>`;
+  function packAlerts() {
+    const out = [];
+    const today = new Date().toISOString().slice(0, 10), in14 = new Date(Date.now() + 14 * 864e5).toISOString().slice(0, 10);
+    data.packs.forEach((k) => {
+      const left = k.sessions_total - k.sessions_used;
+      if (left <= 0 || (k.expires_at && k.expires_at < today)) return;
+      if (k.sessions_total > 1 && left === 1) out.push(`Il ne vous reste plus qu'<b>une séance</b> sur votre pack « ${esc(k.name)} ».`);
+      if (k.expires_at && k.expires_at <= in14) out.push(`Votre pack « ${esc(k.name)} » expire le <b>${esc(P.fmtYmd(k.expires_at))}</b> (${left} séance${left > 1 ? "s" : ""} restante${left > 1 ? "s" : ""}).`);
+    });
+    return out.length ? `<div class="banner" role="status">${out.map((t) => `<div>${t}</div>`).join("")}<div style="margin-top:8px"><a href="${home}#packs">Reprendre un pack</a></div></div>` : "";
+  }
+  function quickBook(tz) {
+    const sv = data.services || [];
+    if (!sv.length) return "";
+    if (!ui.sid) ui.sid = (data.last_service && data.last_service.service_id) || sv[0].id;
+    const cur = sv.find((x) => x.id === ui.sid) || sv[0];
+    let slotsHtml;
+    if (ui.slots === null) slotsHtml = `<div class="skeleton" style="height:40px;margin-top:10px"></div>`;
+    else if (!ui.slots.length) slotsHtml = `<p class="muted" style="margin:10px 0 0">Aucun créneau libre dans les 14 prochains jours.</p>`;
+    else {
+      const list = ui.slots.slice(0, ui.more ? 24 : 6);
+      slotsHtml = `<div class="slotbtns">${list.map((s) => `<button type="button" data-slot="${esc(s.starts_at)}" aria-pressed="${ui.pick === s.starts_at}">${esc(P.fmtDate(s.starts_at, tz, "short"))} · ${esc(P.fmtTime(s.starts_at, tz))}</button>`).join("")}
+        ${!ui.more && ui.slots.length > 6 ? `<button type="button" data-action="more-slots">Plus de créneaux</button>` : ""}</div>
+        ${ui.pick ? `<div class="row2"><span><b>${esc(cur.name)}</b> · ${esc(P.fmtDate(ui.pick, tz))}, ${esc(P.fmtTime(ui.pick, tz))}${cur.price_cents ? " · " + esc(euro(cur.price_cents)) + " à régler sur place" : ""}</span>
+          <button type="button" class="btn btn--brand" data-action="book-now" ${busy ? "disabled" : ""}>${busy ? "Réservation…" : "Confirmer la réservation"}</button></div>` : ""}`;
+    }
+    const wl = (data.waitlist || []);
+    return `<div class="panel"><h2>Réserver en 1 clic</h2>
+      <p class="sub" style="margin:0">Vos coordonnées sont déjà enregistrées : choisissez une prestation et un créneau.</p>
+      <label class="f" for="q-sv">Prestation</label>
+      <select id="q-sv">${sv.map((x) => `<option value="${esc(x.id)}" ${x.id === cur.id ? "selected" : ""}>${esc(x.name)}${x.duration_minutes ? " · " + x.duration_minutes + " min" : ""}${x.price_cents ? " · " + esc(euro(x.price_cents)) : ""}</option>`).join("")}</select>
+      ${slotsHtml}${ui.note ? `<p class="alert alert--ok" role="status">${ui.note}</p>` : ""}${ui.noteErr ? `<p class="alert alert--err" role="alert">${esc(ui.noteErr)}</p>` : ""}
+      <h3 style="margin:18px 0 4px;font-size:16px">Le créneau voulu n'est pas libre ?</h3>
+      <p class="sub" style="margin:0">Choisissez un jour : vous recevez un email si une place se libère.</p>
+      <div class="row2"><input type="date" id="wl-date" value="${esc(ui.wlDate)}" min="${new Date().toISOString().slice(0, 10)}" style="max-width:200px"><button type="button" class="linkbtn" data-action="wl-add">Me prévenir</button></div>
+      ${wl.length ? `<ul style="margin-top:12px">${wl.map((w) => `<li>${esc(w.service_name || "Séance")} · ${esc(P.fmtYmd(w.wanted_date))} <span class="sub">· ${w.status === "notified" ? "place libérée, un email vous a été envoyé" : "en attente"}</span> ${w.status === "waiting" ? `<button type="button" class="linkbtn" style="padding:4px 8px;margin-left:6px" data-action="wl-cancel" data-id="${esc(w.id)}">Annuler</button>` : ""}</li>`).join("")}</ul>` : ""}</div>`;
+  }
+  function homeTab() {
     const tz = data.coach.timezone || "Europe/Paris";
-    document.getElementById("brand-text").textContent = data.coach.display_name.toUpperCase();
-    document.title = `Mon espace · ${data.coach.display_name}`;
     const site = `index.html?c=${encodeURIComponent(data.coach.slug)}`;
-    const nDone = data.history.filter((h) => h.status !== "no_show").length;
-    const worked = data.history.filter((h) => h.player_notes);
-    const packs = data.packs;
+    const nDone = data.stats ? data.stats.total : data.history.filter((h) => h.status !== "no_show").length;
     return `
       <div class="panel"><p class="eyebrow eyebrow--brand">Espace joueur</p>
         <h1 class="h2" style="font-size:30px">Bonjour ${esc(data.player.first_name)}</h1>
         <p class="muted" style="margin:0 0 14px">${nDone} séance${nDone > 1 ? "s" : ""} avec ${esc(data.coach.display_name)}${data.player.level ? " · niveau " + esc(data.player.level) : ""}</p>
-        <a class="btn btn--ball" href="${site}#reserver">Réserver une séance</a></div>
-      <div class="panel"><h2>Prochaines séances</h2>${data.upcoming.length ? `<ul>${data.upcoming.map((u) => `<li><b>${esc(u.service_name)}</b> · ${esc(ST[u.status] || u.status)}<br>
-          <span class="sub">${esc(P.fmtDate(u.starts_at, tz))}, ${P.fmtTime(u.starts_at, tz)} – ${P.fmtTime(u.ends_at, tz)}${u.location ? " · " + esc(u.location) : ""}</span><br>
-          <a href="reservation.html?t=${esc(u.cancel_token)}${params.get("c") ? "&c=" + encodeURIComponent(params.get("c")) : ""}">Gérer ou annuler</a></li>`).join("")}</ul>`
+        <a class="btn btn--ball" href="${site}#reserver">Voir tout le planning</a></div>
+      ${packAlerts()}
+      ${quickBook(tz)}
+      <div class="panel"><h2>Prochaines séances</h2>${data.upcoming.length ? `<ul>${data.upcoming.map((u, i) => `<li><b>${esc(u.service_name)}</b> · ${esc(ST[u.status] || u.status)}<br>
+          <span class="sub">${esc(P.fmtDate(u.starts_at, tz))}, ${esc(P.fmtTime(u.starts_at, tz))} – ${esc(P.fmtTime(u.ends_at, tz))}${u.location ? " · " + esc(u.location) : ""}</span>
+          <div class="gl"><a href="reservation.html?t=${esc(u.cancel_token)}${cq2}">Gérer ou annuler</a> <a href="${esc(gcal(u))}" target="_blank" rel="noopener">Google Agenda</a> <button type="button" class="linkbtn" style="padding:4px 8px" data-action="ics" data-i="${i}">Apple / Outlook (.ics)</button></div></li>`).join("")}</ul>
+        ${data.upcoming.length > 1 ? `<p style="margin:12px 0 0"><button type="button" class="linkbtn" data-action="ics-all">Tout ajouter à mon agenda</button></p>` : ""}`
         : `<p class="muted" style="margin:0">Aucune séance à venir.</p>`}</div>
-      ${packs.length ? `<div class="panel"><h2>Mes packs de séances</h2><ul>${packs.map((k) => {
+      ${data.packs.length ? `<div class="panel"><h2>Mes packs de séances</h2><ul>${data.packs.map((k) => {
         const left = k.sessions_total - k.sessions_used, pct = Math.round(100 * k.sessions_used / k.sessions_total);
         const exp = k.expires_at && k.expires_at < new Date().toISOString().slice(0, 10);
         return `<li><b>${esc(k.name)}</b> ${exp ? '<span class="sub">· expiré</span>' : left <= 0 ? '<span class="sub">· terminé</span>' : ""}
-          <div class="bar" role="img" aria-label="${k.sessions_used} séances utilisées sur ${k.sessions_total}"><i style="width:${pct}%"></i></div>
-          <span class="sub">${k.sessions_used} utilisée${k.sessions_used > 1 ? "s" : ""} sur ${k.sessions_total} · <b>${Math.max(0, left)} restante${left > 1 ? "s" : ""}</b>${k.expires_at ? " · valable jusqu'au " + esc(P.fmtYmd(k.expires_at)) : ""}</span></li>`; }).join("")}</ul></div>` : ""}
-      ${worked.length ? `<div class="panel"><h2>Points travaillés aux derniers cours</h2><ul>${worked.slice(0, 5).map((h) => `<li><b>${esc(P.fmtDate(h.starts_at, tz, "short"))}</b> · ${esc(h.service_name)}<div class="notes">${esc(h.player_notes)}</div></li>`).join("")}</ul></div>` : ""}
+          ${barHtml(pct, k.sessions_used + " séances utilisées sur " + k.sessions_total)}
+          <span class="sub">${k.sessions_used} utilisée${k.sessions_used > 1 ? "s" : ""} sur ${k.sessions_total} · <b>${Math.max(0, left)} restante${left > 1 ? "s" : ""}</b>${k.expires_at ? " · valable jusqu'au " + esc(P.fmtYmd(k.expires_at)) : ""}${k.payment_status === "unpaid" ? " · à régler au coach" : ""}</span></li>`; }).join("")}</ul></div>` : ""}
       ${data.stages.length ? `<div class="panel"><h2>Mes stages</h2><ul>${data.stages.map((s) => `<li><b>${esc(s.title)}</b> · ${s.status === "confirmed" ? "Confirmé" : "En attente de confirmation"}<br><span class="sub">${esc(P.fmtDate(s.starts_at, tz))}</span></li>`).join("")}</ul></div>` : ""}
       <div class="panel"><h2>Historique des séances</h2>${data.history.length ? `<ul>${data.history.map((h) => `<li><b>${esc(h.service_name)}</b> · ${esc(ST[h.status] || h.status)}<br>
-          <span class="sub">${esc(P.fmtDate(h.starts_at, tz))}, ${P.fmtTime(h.starts_at, tz)}${h.location ? " · " + esc(h.location) : ""}${h.pack_name ? " · pack « " + esc(h.pack_name) + " »" : ""}</span></li>`).join("")}</ul>`
-        : `<p class="muted" style="margin:0">Vos séances apparaîtront ici après votre premier cours.</p>`}</div>
-      <div class="panel"><h2>Mes préférences</h2>
-        <label class="check"><input type="checkbox" id="optout" ${data.player.marketing_optout ? "checked" : ""}> <span>Ne plus recevoir les annonces de stages par email</span></label>
-        <p class="sub" style="margin:10px 0 0">Les emails liés à vos réservations (confirmation, rappel) continuent d'être envoyés.</p></div>
+          <span class="sub">${esc(P.fmtDate(h.starts_at, tz))}, ${esc(P.fmtTime(h.starts_at, tz))}${h.location ? " · " + esc(h.location) : ""}${h.pack_name ? " · pack « " + esc(h.pack_name) + " »" : ""}</span>
+          ${h.player_notes ? `<div class="notes">${esc(h.player_notes)}</div>` : ""}
+          ${h.review_token ? `<div class="gl"><a href="review.html?t=${esc(h.review_token)}${cq2}">★ Donner mon avis sur cette séance</a></div>` : ""}</li>`).join("")}</ul>`
+        : `<p class="muted" style="margin:0">Vos séances apparaîtront ici après votre premier cours.</p>`}</div>`;
+  }
+  function sparkline(pts) {
+    if (pts.length < 2) return "";
+    const w = 80, h = 22, xs = pts.map((_, i) => 4 + i * (w - 8) / (pts.length - 1)), ys = pts.map((p) => h - 3 - (p.level - 1) * (h - 6) / 4);
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true" style="vertical-align:middle"><polyline fill="none" stroke="var(--brand)" stroke-width="2" points="${xs.map((x, i) => x.toFixed(1) + "," + ys[i].toFixed(1)).join(" ")}"/></svg>`;
+  }
+  function progressTab() {
+    const st = data.stats || { total: 0, minutes: 0, this_month: 0, streak_weeks: 0 };
+    const hrs = Math.round(st.minutes / 6) / 10;
+    const bd = [["Première séance", st.total >= 1], ["10 séances", st.total >= 10], ["25 séances", st.total >= 25], ["50 séances", st.total >= 50], ["4 semaines d'affilée", st.streak_weeks >= 4], ["8 semaines d'affilée", st.streak_weeks >= 8]];
+    const hist = data.skill_history || [];
+    return `
+      <div class="panel"><h2>Mes statistiques</h2>
+        <div class="grid2">
+          <div class="stat"><b>${st.total}</b><span>séance${st.total > 1 ? "s" : ""} jouée${st.total > 1 ? "s" : ""}</span></div>
+          <div class="stat"><b>${hrs}</b><span>heure${hrs > 1 ? "s" : ""} de padel</span></div>
+          <div class="stat"><b>${st.this_month}</b><span>ce mois-ci</span></div>
+          <div class="stat"><b>${st.streak_weeks}</b><span>semaine${st.streak_weeks > 1 ? "s" : ""} d'affilée</span></div>
+        </div>
+        <p class="sub" style="margin:12px 0 0">${st.first_at ? "Premier cours le " + esc(P.fmtDate(st.first_at, data.coach.timezone, "short")) + ". " : ""}${st.top_service ? "Prestation favorite : " + esc(st.top_service) + "." : ""}</p>
+        <div class="badges">${bd.map(([t, on]) => `<span class="badge ${on ? "" : "off"}">${on ? "🏅 " : ""}${esc(t)}</span>`).join("")}</div></div>
+      <div class="panel"><h2>Mes objectifs</h2>
+        ${data.goals.length ? `<ul>${data.goals.map((g) => `<li><b>${esc(g.title)}</b>${g.status === "done" ? ' <span class="badge">Atteint ✓</span>' : ""}${g.created_by === "coach" ? ' <span class="sub">· fixé par votre coach</span>' : ""}
+          ${barHtml(g.progress, "Progression " + g.progress + "%")}
+          <div class="row2"><span class="sub">${g.progress}%</span>
+          ${g.status === "active" ? `<input type="range" min="0" max="100" step="10" value="${g.progress}" data-goal-range="${esc(g.id)}" style="flex:1;min-width:120px" aria-label="Progression de l'objectif">
+            <button type="button" class="linkbtn" data-action="goal-done" data-id="${esc(g.id)}">Atteint</button>` : `<button type="button" class="linkbtn" data-action="goal-reopen" data-id="${esc(g.id)}">Rouvrir</button>`}
+          <button type="button" class="linkbtn" data-action="goal-del" data-id="${esc(g.id)}">Retirer</button></div></li>`).join("")}</ul>` : `<p class="muted" style="margin:0 0 6px">Fixez-vous un cap avec votre coach, par exemple « améliorer ma bandeja ».</p>`}
+        <form id="goal-form" class="row2" style="margin-top:12px" novalidate><input type="text" id="goal-title" maxlength="160" placeholder="Mon nouvel objectif" style="flex:1;min-width:180px"><button class="btn btn--brand" type="submit">Ajouter</button></form>
+        ${ui.noteErr && tab === "progress" ? `<p class="alert alert--err">${esc(ui.noteErr)}</p>` : ""}</div>
+      <div class="panel"><h2>Ma fiche de progression</h2>
+        ${data.skills.length ? data.skills.map((k) => {
+          const d = k.previous ? k.level - k.previous : 0;
+          const pts = hist.filter((x) => x.skill === k.skill);
+          return `<div class="skill"><div><b>${esc(k.skill)}</b> ${d > 0 ? '<span class="badge">▲ +' + d + "</span>" : d < 0 ? '<span class="badge off">▼ ' + d + "</span>" : ""}<br><span class="sub">Évalué le ${esc(P.fmtDate(k.rated_at, data.coach.timezone, "short"))}</span></div>
+            <div style="text-align:right"><span class="dots" aria-label="${k.level} sur 5">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= k.level ? "on" : ""}"></i>`).join("")}</span><br>${sparkline(pts)}</div></div>`; }).join("")
+        : `<p class="muted" style="margin:0">Votre coach n'a pas encore évalué vos gestes. Les notes de 1 à 5 apparaîtront ici après vos prochains cours.</p>`}</div>`;
+  }
+  function messagesTab() {
+    const m = data.messages || [];
+    return `<div class="panel"><h2>Messagerie avec ${esc(data.coach.display_name)}</h2>
+      ${m.length ? `<div class="thread" id="thread">${m.map((x) => `<div class="msg ${x.sender === "player" ? "me" : ""}">${esc(x.body)}<small>${x.sender === "player" ? "Vous" : esc(data.coach.display_name)} · ${esc(P.fmtDate(x.created_at, data.coach.timezone, "short"))} ${esc(P.fmtTime(x.created_at, data.coach.timezone))}</small></div>`).join("")}</div>`
+        : `<p class="muted" style="margin:0 0 10px">Une question sur une séance, un pack ou un exercice ? Écrivez à votre coach ici.</p>`}
+      <form id="msg-form" style="margin-top:12px" novalidate><label class="f" for="msg-body">Votre message</label><textarea id="msg-body" rows="3" maxlength="2000" placeholder="Bonjour coach…"></textarea>
+        ${ui.noteErr && tab === "messages" ? `<p class="alert alert--err">${esc(ui.noteErr)}</p>` : ""}
+        <div class="actions" style="margin-top:10px"><button class="btn btn--brand" type="submit" ${busy ? "disabled" : ""}>${busy ? "Envoi…" : "Envoyer"}</button></div></form>
+      <p class="sub" style="margin:10px 0 0">Votre coach vous répond ici et par email. Pour une urgence le jour même, appelez-le directement.</p></div>`;
+  }
+  const iosHint = () => /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.navigator.standalone;
+  const isStandalone = () => window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+  function settingsTab() {
+    const p = data.player;
+    const chk = (id, on, t, hint) => `<label class="check" style="margin-top:8px"><input type="checkbox" id="${id}" ${on ? "checked" : ""}> <span>${t}${hint ? `<br><small class="sub">${hint}</small>` : ""}</span></label>`;
+    return `
+      <div class="panel"><h2>Mes coordonnées et rappels</h2>
+        <form id="profile-form" novalidate>
+          <label class="f" for="s-email">Email</label><input id="s-email" type="email" autocomplete="email" maxlength="200" value="${esc(p.email || "")}">
+          <label class="f" for="s-phone">Téléphone</label><input id="s-phone" type="tel" autocomplete="tel" maxlength="30" value="${esc(p.phone || "")}">
+          <h3 style="margin:18px 0 2px;font-size:16px">Mes rappels par email</h3>
+          ${chk("s-rem", p.pref_reminders, "Rappel la veille de chaque séance")}
+          ${chk("s-pack", p.pref_pack_alerts, "Alertes de pack", "Il vous reste 1 séance, ou le pack arrive à échéance.")}
+          ${chk("s-msg", p.pref_messages, "Email quand mon coach m'écrit")}
+          ${chk("s-opt", !p.marketing_optout, "Annonces de stages de mon coach")}
+          <p class="sub" style="margin:8px 0 0">Les emails de confirmation et d'annulation de vos réservations sont toujours envoyés.</p>
+          ${ui.noteErr && tab === "settings" ? `<p class="alert alert--err">${esc(ui.noteErr)}</p>` : ""}${ui.note && tab === "settings" ? `<p class="alert alert--ok" role="status">${esc(ui.note)}</p>` : ""}
+          <div class="actions" style="margin-top:12px"><button class="btn btn--brand" type="submit">Enregistrer</button></div></form></div>
+      <div class="panel"><h2>Changer mon mot de passe</h2>
+        <form id="pw-form" novalidate>
+          <label class="f" for="pw-old">Mot de passe actuel</label><input id="pw-old" type="password" autocomplete="current-password" maxlength="72">
+          <label class="f" for="pw-new">Nouveau mot de passe (8 caractères minimum)</label><input id="pw-new" type="password" autocomplete="new-password" maxlength="72">
+          ${ui.pwMsg ? `<p class="alert ${ui.pwOk ? "alert--ok" : "alert--err"}" role="alert">${esc(ui.pwMsg)}</p>` : ""}
+          <div class="actions" style="margin-top:12px"><button class="btn" type="submit">Changer le mot de passe</button></div></form></div>
+      <div class="panel"><h2>Installer l'espace sur mon téléphone</h2>
+        ${isStandalone() ? `<p class="muted" style="margin:0">L'espace est déjà installé sur cet appareil.</p>`
+          : ui.installEvt ? `<p class="muted">Gardez votre espace joueur sur votre écran d'accueil, comme une application.</p><button type="button" class="btn btn--brand" data-action="install">Installer l'application</button>`
+          : iosHint() ? `<p class="muted" style="margin:0">Sur iPhone : touchez le bouton <b>Partager</b> (carré avec une flèche) en bas de Safari, puis <b>Sur l'écran d'accueil</b>.</p>`
+          : `<p class="muted" style="margin:0">Dans le menu de votre navigateur (⋮), choisissez <b>Installer l'application</b> ou <b>Ajouter à l'écran d'accueil</b>.</p>`}</div>
+      <div class="panel"><h2>Mes données</h2>
+        <p class="muted" style="margin:0 0 10px">Téléchargez une copie de toutes les informations que votre coach et ce site conservent sur vous (profil, séances, packs, objectifs, messages).</p>
+        <button type="button" class="btn" data-action="export" ${ui.exportBusy ? "disabled" : ""}>${ui.exportBusy ? "Préparation…" : "Télécharger mes données"}</button></div>
+      <div class="panel danger"><h2>Supprimer mon compte</h2>
+        <p class="muted" style="margin:0 0 10px">Votre accès, vos objectifs, vos messages et vos alertes sont supprimés, et vous ne recevez plus d'emails de rappel ni d'annonces. Votre coach conserve l'historique de vos séances et de vos paiements, comme le prévoit la loi pour sa comptabilité.</p>
+        ${ui.confirmDel ? `<form id="del-form" novalidate><label class="f" for="del-pw">Tapez votre mot de passe pour confirmer</label><input id="del-pw" type="password" autocomplete="current-password" maxlength="72">
+          ${ui.pwMsg ? `<p class="alert alert--err" role="alert">${esc(ui.pwMsg)}</p>` : ""}
+          <div class="row2"><button class="btn btn--danger" type="submit">Supprimer définitivement mon compte</button><button type="button" class="linkbtn" data-action="del-cancel">Annuler</button></div></form>`
+          : `<button type="button" class="btn" data-action="del-start">Supprimer mon compte</button>`}</div>`;
+  }
+  function spaceView() {
+    document.getElementById("brand-text").textContent = data.coach.display_name.toUpperCase();
+    document.title = `Mon espace · ${data.coach.display_name}`;
+    const unread = (data.messages || []).filter((m) => m.unread).length;
+    const T = [["home", "Accueil"], ["progress", "Progression"], ["messages", "Messages"], ["settings", "Réglages"]];
+    return `<nav class="tabs" aria-label="Rubriques">${T.map(([k, l]) => `<button type="button" data-tab="${k}" ${tab === k ? 'aria-current="true"' : ""}>${l}${k === "messages" && unread ? `<span class="dot">${unread}</span>` : ""}</button>`).join("")}</nav>
+      ${tab === "home" ? homeTab() : tab === "progress" ? progressTab() : tab === "messages" ? messagesTab() : settingsTab()}
       <div style="text-align:center"><button class="btn" type="button" id="logout">Me déconnecter</button></div>`;
   }
 
@@ -136,19 +323,93 @@
     if (unsub) { el.innerHTML = unsubView(); return; }
     if (act) { el.innerHTML = activateView(); return; }
     el.innerHTML = data ? spaceView() : loginView();
+    if (data && tab === "messages") { const t = document.getElementById("thread"); if (t) t.scrollTop = t.scrollHeight; }
   }
 
+  // ------------------------------------------------------------ données ---
+  const call = (name, args) => api.spaceCall(session, name, args || {});
+  async function reload() { data = await api.playerSpace(session); }
   async function open(sess) {
     data = await api.playerSpace(sess);
     if (data) { session = sess; setS(sess); } else { setS(""); }
     return !!data;
   }
+  function fail(x) {
+    if (x && x.code === "SESSION") { setS(""); data = null; session = ""; mode = "login"; err = "Votre session a expiré. Reconnectez-vous."; return; }
+    ui.noteErr = (x && x.message) || "Une erreur est survenue.";
+  }
+  async function loadSlots() {
+    if (!data) return;
+    if (!ui.sid) { const sv = data.services || []; ui.sid = (data.last_service && data.last_service.service_id) || (sv[0] && sv[0].id) || ""; }
+    if (!ui.sid || ui.slotsFor === ui.sid) return;
+    ui.slotsFor = ui.sid; ui.slots = null; ui.pick = ""; ui.more = false;
+    const tz = data.coach.timezone || "Europe/Paris", today = P.localYmd(new Date(), tz);
+    try { ui.slots = (await api.getSlots(slug, ui.sid, today, P.addDays(today, 14))) || []; } catch { ui.slots = []; }
+    if (data && tab === "home") render();
+  }
+  async function action(name, fn) {
+    ui.note = ""; ui.noteErr = "";
+    try { await fn(); await reload(); } catch (x) { fail(x); }
+    busy = false; render();
+    if (data && tab === "home") loadSlots();
+  }
 
-  el.addEventListener("click", (e) => {
+  el.addEventListener("click", async (e) => {
     const m = e.target.closest("[data-mode]");
     if (m) { e.preventDefault(); mode = m.dataset.mode; err = ""; info = ""; render(); return; }
-    if (e.target.id === "logout") { api.playerLogout(session); setS(""); data = null; session = ""; mode = "login"; render(); }
+    if (e.target.id === "logout") { api.playerLogout(session); setS(""); data = null; session = ""; mode = "login"; render(); return; }
+    const tb = e.target.closest("[data-tab]");
+    if (tb) {
+      tab = tb.dataset.tab; ui.note = ""; ui.noteErr = ""; ui.pwMsg = ""; render();
+      if (tab === "home") loadSlots();
+      if (tab === "messages" && (data.messages || []).some((x) => x.unread)) { try { await call("messages_read"); await reload(); render(); } catch {} }
+      return;
+    }
+    const sl = e.target.closest("[data-slot]");
+    if (sl) { ui.pick = ui.pick === sl.dataset.slot ? "" : sl.dataset.slot; ui.note = ""; ui.noteErr = ""; render(); return; }
+    const a = e.target.closest("[data-action]");
+    if (!a) return;
+    const k = a.dataset.action;
+    if (k === "more-slots") { ui.more = true; render(); }
+    else if (k === "book-now") {
+      busy = true; render();
+      await action("book", async () => {
+        const r = await call("book", { p_service_id: ui.sid, p_starts_at: ui.pick });
+        ui.note = r && r.status === "pending" ? "Demande envoyée : votre coach la valide très vite. Vous recevez un email." : "Séance réservée ! Un email de confirmation vous est envoyé.";
+        ui.pick = ""; ui.slotsFor = "";
+      });
+    }
+    else if (k === "wl-add") {
+      const d = (document.getElementById("wl-date") || {}).value || ""; ui.wlDate = d;
+      if (!d) { ui.noteErr = "Choisissez d'abord une date."; render(); return; }
+      await action("wl", async () => { await call("waitlist_add", { p_service_id: ui.sid, p_date: d }); ui.note = "C'est noté : vous serez prévenu par email si une place se libère ce jour-là."; ui.wlDate = ""; });
+    }
+    else if (k === "wl-cancel") await action("wl", () => call("waitlist_cancel", { p_id: a.dataset.id }));
+    else if (k === "ics") { const u = data.upcoming[Number(a.dataset.i)]; if (u) download("seance-padel.ics", buildIcs([u])); }
+    else if (k === "ics-all") download("mes-seances-padel.ics", buildIcs(data.upcoming));
+    else if (k === "goal-done") await action("goal", () => call("goal_set", { p_id: a.dataset.id, p_progress: 100, p_status: "done" }));
+    else if (k === "goal-reopen") await action("goal", () => call("goal_set", { p_id: a.dataset.id, p_progress: 90, p_status: "active" }));
+    else if (k === "goal-del") await action("goal", () => call("goal_set", { p_id: a.dataset.id, p_progress: 0, p_status: "cancelled" }));
+    else if (k === "install" && ui.installEvt) { ui.installEvt.prompt(); try { await ui.installEvt.userChoice; } catch {} ui.installEvt = null; render(); }
+    else if (k === "export") {
+      ui.exportBusy = true; render();
+      try { const r = await call("export"); download("mes-donnees-padel.json", JSON.stringify(r, null, 2), "application/json"); } catch (x) { fail(x); }
+      ui.exportBusy = false; render();
+    }
+    else if (k === "del-start") { ui.confirmDel = true; ui.pwMsg = ""; render(); }
+    else if (k === "del-cancel") { ui.confirmDel = false; ui.pwMsg = ""; render(); }
   });
+
+  el.addEventListener("input", (e) => { if (e.target.id === "wl-date") ui.wlDate = e.target.value; });
+  el.addEventListener("change", async (e) => {
+    if (e.target.id === "wl-date") ui.wlDate = e.target.value;
+    if (e.target.id === "q-sv") { ui.sid = e.target.value; ui.slotsFor = ""; ui.pick = ""; render(); loadSlots(); return; }
+    if (e.target.matches("[data-goal-range]")) {
+      const id = e.target.dataset.goalRange, v = Number(e.target.value);
+      await action("goal", () => call("goal_set", { p_id: id, p_progress: v, p_status: v >= 100 ? "done" : "active" }));
+    }
+  });
+
   el.addEventListener("submit", async (e) => {
     e.preventDefault();
     const id = e.target.id;
@@ -172,20 +433,55 @@
         if (a !== b) { err = "Les deux mots de passe ne sont pas identiques."; render(); return; }
         busy = true; render();
         const sess = await api.playerSetPassword(act, a);
-        setS(sess); history.replaceState(null, "", "mon-espace.html" + cq);
-        location.replace("mon-espace.html" + cq); return;
+        setS(sess); location.replace("mon-espace.html" + cq); return;
       } else if (id === "unsub") {
         busy = true; render();
         await api.setPlayerOptout(unsub, true);
         info = "Vous ne recevrez plus d'annonces de stages par email.";
+      } else if (id === "goal-form") {
+        const t = document.getElementById("goal-title").value.trim();
+        if (!t) return;
+        await action("goal", () => call("goal_add", { p_title: t })); return;
+      } else if (id === "msg-form") {
+        const t = document.getElementById("msg-body").value.trim();
+        if (!t) return;
+        busy = true; render();
+        await action("msg", () => call("message_send", { p_body: t })); return;
+      } else if (id === "profile-form") {
+        const v = (i) => document.getElementById(i);
+        ui.note = ""; ui.noteErr = "";
+        try {
+          await call("update_profile", { p_phone: v("s-phone").value, p_email: v("s-email").value, p_pref_reminders: v("s-rem").checked, p_pref_pack_alerts: v("s-pack").checked, p_pref_messages: v("s-msg").checked, p_marketing_optout: !v("s-opt").checked });
+          await reload(); ui.note = "Modifications enregistrées.";
+        } catch (x) { fail(x); }
+        render(); return;
+      } else if (id === "pw-form") {
+        const o = document.getElementById("pw-old").value, n = document.getElementById("pw-new").value;
+        ui.pwMsg = ""; ui.pwOk = false;
+        try {
+          const r = await call("change_password", { p_old: o, p_new: n });
+          if (r && r.error) ui.pwMsg = r.message; else { ui.pwOk = true; ui.pwMsg = "Mot de passe modifié. Vos autres appareils sont déconnectés."; }
+        } catch (x) { ui.pwMsg = x.message || "Une erreur est survenue."; }
+        render(); return;
+      } else if (id === "del-form") {
+        const pw = document.getElementById("del-pw").value;
+        ui.pwMsg = "";
+        try {
+          const r = await call("delete_account", { p_password: pw });
+          if (r && r.error) { ui.pwMsg = r.message; render(); return; }
+          setS(""); data = null; session = ""; mode = "login"; ui.confirmDel = false; info = "";
+          err = ""; render();
+          el.insertAdjacentHTML("afterbegin", `<div class="panel"><p class="alert alert--ok" role="status">Votre compte a été supprimé. Merci d'avoir utilisé l'espace joueur.</p></div>`);
+          return;
+        } catch (x) { ui.pwMsg = x.message || "Une erreur est survenue."; render(); return; }
       }
     } catch (x) { err = x.message || "Une erreur est survenue."; }
     busy = false; render();
+    if (data && tab === "home") loadSlots();
   });
-  el.addEventListener("change", async (e) => {
-    if (e.target.id !== "optout") return;
-    try { await api.setPlayerOptoutSession(session, e.target.checked); } catch { e.target.checked = !e.target.checked; }
-  });
+
+  window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); ui.installEvt = e; if (data && tab === "settings") render(); });
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("espace-sw.js").catch(() => {});
 
   (async function init() {
     try {
@@ -193,6 +489,8 @@
       if (!act && !unsub) { const s0 = getS(); if (s0) await open(s0); }
     } catch (x) { data = null; }
     render();
+    if (data && tab === "home") loadSlots();
+    if (data && tab === "messages" && (data.messages || []).some((x) => x.unread)) { try { await call("messages_read"); await reload(); render(); } catch {} }
   })();
 })();
 </script>

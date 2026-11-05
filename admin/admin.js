@@ -9,7 +9,7 @@
   const S = {
     api: null, user: null, coaches: [], coach: null, loading: false,
     services: [], locations: [], rules: [], media: [], messages: [], timeOff: [], players: [], testimonials: [], site: null, bookings: [],
-    reviews: [], stages: [], stageRegs: [], packs: [], playerPacks: [], busy: [], calImport: null, allBookings: null, allLoadedAt: 0,
+    reviews: [], stages: [], stageRegs: [], packs: [], playerPacks: [], goals: [], skillRatings: [], pMessages: [], busy: [], calImport: null, allBookings: null, allLoadedAt: 0,
     isAdmin: false,
     ui: { resFilter: "upcoming", resQuery: "", playerQuery: "", weekStart: null },
     recovery: false,
@@ -106,7 +106,7 @@
     Object.assign(S, { services, locations, rules, timeOff, players, testimonials, site, media, messages: messages.reverse() });
     S.reviews = await S.api.list("reviews", id, "created_at").catch(() => []);
     const opt = (t, o) => S.api.list(t, id, o).catch(() => []);
-    [S.stages, S.stageRegs, S.packs, S.playerPacks] = await Promise.all([opt("stages", "starts_at"), opt("stage_registrations", "created_at"), opt("packs", "position,name"), opt("player_packs", "created_at")]);
+    [S.stages, S.stageRegs, S.packs, S.playerPacks, S.goals, S.skillRatings, S.pMessages] = await Promise.all([opt("stages", "starts_at"), opt("stage_registrations", "created_at"), opt("packs", "position,name"), opt("player_packs", "created_at"), opt("player_goals", "created_at"), opt("player_skill_ratings", "rated_at"), opt("player_messages", "created_at")]);
     await reloadCalendar();
     S.allBookings = null;
     await loadBookings();
@@ -1106,6 +1106,25 @@
     const s = document.getElementById("pl-search");
     s.addEventListener("input", () => { S.ui.playerQuery = s.value; const pos = s.selectionStart; render(); const n = document.getElementById("pl-search"); n.focus(); n.setSelectionRange(pos, pos); });
   };
+  // Espace joueur : objectifs, fiche de progression, messagerie (côté coach).
+  const SKILLS = ["Service", "Volée", "Bandeja", "Víbora", "Smash", "Chiquita", "Bajada", "Défense (vitres)", "Lob", "Déplacements", "Tactique"];
+  const skillNow = (pid, skill) => { const l = (S.skillRatings || []).filter((r) => r.player_id === pid && r.skill === skill).sort((a, b) => a.rated_at.localeCompare(b.rated_at)); return l.length ? l[l.length - 1].level : 0; };
+  function playerSpaceHtml(pid) {
+    const goals = (S.goals || []).filter((g) => g.player_id === pid && g.status !== "cancelled");
+    const msgs = (S.pMessages || []).filter((m) => m.player_id === pid).sort((a, b) => a.created_at.localeCompare(b.created_at));
+    return `<section class="card" style="padding:14px"><h2 style="font-size:15px;margin-bottom:8px">Objectifs du joueur</h2>
+      ${goals.length ? `<div class="rows">${goals.map((g) => `<div class="row" style="grid-template-columns:minmax(0,1fr) auto;align-items:center"><span class="row__main"><span class="row__title">${esc(g.title)} ${g.status === "done" ? pill("confirmed", "Atteint") : ""}</span><span class="row__sub">${g.progress}% · ${g.created_by === "coach" ? "fixé par vous" : "fixé par le joueur"}</span></span>
+        <span class="btn-row">${g.status === "done" ? "" : `<button class="btn btn--sm" data-action="goal-status" data-id="${g.id}" data-status="done">Atteint</button>`}<button class="btn btn--sm" data-action="goal-status" data-id="${g.id}" data-status="cancelled">Retirer</button></span></div>`).join("")}</div>` : `<div class="empty" style="padding:6px 0">Aucun objectif pour l'instant.</div>`}
+      <div class="btn-row" style="margin-top:8px"><input type="text" id="pg-title" maxlength="160" placeholder="Nouvel objectif (ex. améliorer la bandeja)" style="flex:1"><button class="btn btn--sm" data-action="goal-add" data-player-id="${pid}">Ajouter</button></div></section>
+    <section class="card" style="padding:14px"><h2 style="font-size:15px;margin-bottom:4px">Fiche de progression</h2>
+      <p class="muted" style="margin:0 0 8px;font-size:13px">Note de 1 à 5. Le joueur voit la dernière note et son évolution dans son espace.</p>
+      <div class="rows">${SKILLS.map((k) => { const lv = skillNow(pid, k); return `<div class="row" style="grid-template-columns:minmax(0,1fr) auto;align-items:center"><span class="row__main"><span class="row__title">${esc(k)}</span></span>
+        <span class="btn-row">${[1, 2, 3, 4, 5].map((n) => `<button class="btn btn--sm ${lv === n ? "btn--primary" : ""}" style="min-width:34px;padding:4px 8px" data-action="skill-set" data-player-id="${pid}" data-skill="${esc(k)}" data-level="${n}" aria-label="${esc(k)} ${n} sur 5">${n}</button>`).join("")}</span></div>`; }).join("")}</div></section>
+    <section class="card" style="padding:14px"><h2 style="font-size:15px;margin-bottom:8px">Messages avec le joueur</h2>
+      ${msgs.length ? `<div class="rows" style="max-height:260px;overflow-y:auto">${msgs.slice(-20).map((m) => `<div class="row" style="grid-template-columns:minmax(0,1fr)"><span class="row__main"><span class="row__title">${m.sender === "coach" ? "Vous" : esc(fullName(playerById(pid)))}</span><span class="row__sub" style="white-space:pre-wrap">${esc(m.body)}</span><span class="row__sub">${esc(P.fmtDate(m.created_at, tz(), "short"))} ${esc(P.fmtTime(m.created_at, tz()))}</span></span></div>`).join("")}</div>` : `<div class="empty" style="padding:6px 0">Aucun message.</div>`}
+      <label class="field" style="margin-top:8px"><span>Répondre</span><textarea id="pm-body" rows="2" maxlength="2000" placeholder="Votre message au joueur (il reçoit aussi un email)"></textarea></label>
+      <button class="btn btn--sm" data-action="pmsg-send" data-player-id="${pid}" style="margin-top:6px">Envoyer</button></section>`;
+  }
   function playerDrawer(id, confirmDelete) {
     const p = id ? playerById(id) : { first_name: "", last_name: "", email: "", phone: "", level: "", notes: "" };
     if (!p) return;
@@ -1128,6 +1147,7 @@
         </div>
         ${id ? `<label class="switch"><span><b>Ne pas envoyer les annonces de stages</b><small>Cochez si le joueur ne souhaite plus recevoir ces emails.</small></span><input type="checkbox" id="pl-optout" ${p.marketing_optout ? "checked" : ""}></label>` : ""}
         ${id ? playerPacksHtml(id) : ""}
+        ${id ? playerSpaceHtml(id) : ""}
         ${st && st.all.length ? `<div><div class="day-head">Historique</div><div class="rows">${[...st.all].reverse().slice(0, 30).map((b) => bookingRow(b, { showDate: true })).join("")}</div></div>` : ""}`,
       foot: `<button class="btn btn--primary" data-action="save-player" data-id="${id || ""}">Enregistrer</button>
         ${id ? `<button class="btn" data-action="new-booking" data-player-id="${id}">Réserver une séance</button><button class="btn btn--danger" data-action="ask-delete-player" data-id="${id}">Supprimer</button>` : ""}`,
@@ -1738,7 +1758,7 @@
   // enregistrés par appareil.
   const PUSH_KINDS = {
     coach: [["booking_new", "Nouvelle réservation"], ["booking_pending", "Réservation à valider"], ["booking_cancelled", "Annulation par l'élève"],
-      ["review_new", "Nouvel avis d'un élève"], ["stage_registration", "Inscription à un stage"], ["pack_order", "Pack de séances commandé"], ["message_new", "Nouveau message du site"], ["invoice_new", "Nouvelle facture PCW"]],
+      ["review_new", "Nouvel avis d'un élève"], ["stage_registration", "Inscription à un stage"], ["pack_order", "Pack de séances commandé"], ["player_message", "Message d'un joueur"], ["message_new", "Nouveau message du site"], ["invoice_new", "Nouvelle facture PCW"]],
     admin: [["admin_coach_live", "Un coach passe en ligne"], ["admin_review_pending", "Avis de coach à valider"], ["admin_invoice_due", "Facture échue"]],
   };
   const PUSH = { state: "loading", endpoint: null, prefs: {} };
@@ -3218,6 +3238,29 @@
     "save-pack": (el) => savePack(el.dataset.id),
     "ask-delete-pack": (el) => packDrawer(el.dataset.id, true),
     "delete-pack": async (el) => { try { await S.api.remove("packs", el.dataset.id); S.packs = S.packs.filter((k) => k.id !== el.dataset.id); closeDrawer(); toast("Pack supprimé"); render(); } catch (e) { toast(errMsg(e)); } },
+    "goal-add": async (el) => {
+      const t = (document.getElementById("pg-title") || {}).value || "";
+      if (!t.trim()) { toast("Décrivez l'objectif"); return; }
+      try { S.goals.push(await S.api.insert("player_goals", { coach_id: S.coach.id, player_id: el.dataset.playerId, title: t.trim(), created_by: "coach" })); playerDrawer(el.dataset.playerId); toast("Objectif ajouté"); }
+      catch (e) { toast(errMsg(e)); }
+    },
+    "goal-status": async (el) => {
+      try { const r = await S.api.update("player_goals", el.dataset.id, { status: el.dataset.status, progress: el.dataset.status === "done" ? 100 : undefined, done_at: el.dataset.status === "done" ? new Date().toISOString() : null });
+        S.goals[S.goals.findIndex((x) => x.id === r.id)] = r; playerDrawer(r.player_id); }
+      catch (e) { toast(errMsg(e)); }
+    },
+    "skill-set": async (el) => {
+      const pid = el.dataset.playerId, lv = Number(el.dataset.level);
+      if (skillNow(pid, el.dataset.skill) === lv) return;
+      try { S.skillRatings.push(await S.api.insert("player_skill_ratings", { coach_id: S.coach.id, player_id: pid, skill: el.dataset.skill, level: lv })); playerDrawer(pid); toast("Note enregistrée"); }
+      catch (e) { toast(errMsg(e)); }
+    },
+    "pmsg-send": async (el) => {
+      const t = (document.getElementById("pm-body") || {}).value || "";
+      if (!t.trim()) { toast("Écrivez un message"); return; }
+      try { S.pMessages.push(await S.api.insert("player_messages", { coach_id: S.coach.id, player_id: el.dataset.playerId, sender: "coach", body: t.trim() })); playerDrawer(el.dataset.playerId); toast("Message envoyé"); }
+      catch (e) { toast(errMsg(e)); }
+    },
     "sell-pack": (el) => sellPackDrawer(el.dataset.playerId),
     "do-sell-pack": (el) => doSellPack(el.dataset.playerId),
     "pack-pay": async (el) => {
