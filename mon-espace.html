@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link id="font-link" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Hanken+Grotesk:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="assets/site.css?v=mw2sv378">
+<link rel="stylesheet" href="assets/site.css?v=mw2t34bw">
 <style>
   .space { display: grid; gap: 18px; padding: 28px 0 56px; max-width: 760px; margin: 0 auto; }
   .space h2 { margin: 0 0 12px; font: 800 20px/1.2 var(--f-display); color: var(--brand); }
@@ -34,10 +34,10 @@
 <main class="wrap">
   <div class="space" id="space" aria-live="polite"><div class="panel"><div class="skeleton"></div><div class="skeleton" style="margin-top:12px;width:60%"></div></div></div>
 </main>
-<script src="assets/config.js?v=mw2sv378"></script>
-<script src="assets/core.js?v=mw2sv378"></script>
-<script src="assets/demo-data.js?v=mw2sv378"></script>
-<script src="assets/api.js?v=mw2sv378"></script>
+<script src="assets/config.js?v=mw2t34bw"></script>
+<script src="assets/core.js?v=mw2t34bw"></script>
+<script src="assets/demo-data.js?v=mw2t34bw"></script>
+<script src="assets/api.js?v=mw2t34bw"></script>
 <script>
 (function () {
   "use strict";
@@ -51,7 +51,7 @@
   const home = `index.html${cq}`;
   document.getElementById("brand").href = home;
   const KEY = "pcw-player-" + slug;
-  let api, data = null, lastEmail = "", session = "", mode = "login", busy = false, err = "", info = "", done = false;
+  let api, data = null, lastEmail = "", session = "", mode = params.get("m") === "ask" ? "ask" : "login", busy = false, err = "", info = "", done = false;
   const ST = { confirmed: "Confirmée", pending: "À valider", completed: "Terminée", no_show: "Absent" };
   const getS = () => { try { return localStorage.getItem(KEY) || ""; } catch { return ""; } };
   const setS = (v) => { try { v ? localStorage.setItem(KEY, v) : localStorage.removeItem(KEY); } catch {} };
