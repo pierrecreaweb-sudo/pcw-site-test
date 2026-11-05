@@ -1738,7 +1738,7 @@
   // enregistrés par appareil.
   const PUSH_KINDS = {
     coach: [["booking_new", "Nouvelle réservation"], ["booking_pending", "Réservation à valider"], ["booking_cancelled", "Annulation par l'élève"],
-      ["review_new", "Nouvel avis d'un élève"], ["stage_registration", "Inscription à un stage"], ["message_new", "Nouveau message du site"], ["invoice_new", "Nouvelle facture PCW"]],
+      ["review_new", "Nouvel avis d'un élève"], ["stage_registration", "Inscription à un stage"], ["pack_order", "Pack de séances commandé"], ["message_new", "Nouveau message du site"], ["invoice_new", "Nouvelle facture PCW"]],
     admin: [["admin_coach_live", "Un coach passe en ligne"], ["admin_review_pending", "Avis de coach à valider"], ["admin_invoice_due", "Facture échue"]],
   };
   const PUSH = { state: "loading", endpoint: null, prefs: {} };
