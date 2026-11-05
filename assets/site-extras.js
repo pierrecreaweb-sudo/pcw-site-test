@@ -98,6 +98,28 @@
     a.className = "nav__space"; a.textContent = "Mon espace";
     a.href = "mon-espace.html" + (q ? "?c=" + encodeURIComponent(q) : "");
     nav.appendChild(a);
+    buildMenu();
+  }
+
+  // Menu mobile (burger) : reprend les liens du menu, y compris Stages, Packs et Mon espace.
+  function buildMenu() {
+    const nav = document.querySelector(".nav"), bar = document.querySelector(".topbar__in");
+    if (!nav || !bar) return;
+    let btn = bar.querySelector(".burger"), panel = document.getElementById("mobile-menu");
+    if (!btn) {
+      btn = document.createElement("button");
+      btn.type = "button"; btn.className = "burger"; btn.setAttribute("aria-label", "Ouvrir le menu"); btn.setAttribute("aria-expanded", "false"); btn.setAttribute("aria-controls", "mobile-menu");
+      btn.innerHTML = '<span></span><span></span><span></span>';
+      bar.appendChild(btn);
+      panel = document.createElement("nav");
+      panel.id = "mobile-menu"; panel.className = "mobile-menu"; panel.hidden = true; panel.setAttribute("aria-label", "Menu");
+      document.querySelector(".topbar").appendChild(panel);
+      const close = () => { panel.hidden = true; btn.setAttribute("aria-expanded", "false"); };
+      btn.addEventListener("click", () => { panel.hidden = !panel.hidden; btn.setAttribute("aria-expanded", String(!panel.hidden)); });
+      panel.addEventListener("click", (e) => { if (e.target.closest("a")) close(); });
+      document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+    }
+    panel.innerHTML = [...nav.querySelectorAll("a")].map((a) => `<a href="${esc(a.getAttribute("href"))}">${esc(a.textContent)}</a>`).join("");
   }
 
   function addNavLinks() {
@@ -106,6 +128,7 @@
     const add = (id, label, has) => { if (has && !nav.querySelector(`a[href="#${id}"]`)) { const a = document.createElement("a"); a.href = `#${id}`; a.textContent = label; nav.insertBefore(a, nav.querySelector('a[href="#lieux"]')); } };
     add("stages", "Stages", (x.data.stages || []).length);
     add("packs", "Packs", (x.data.packs || []).length);
+    buildMenu();
   }
 
   function bind() {
