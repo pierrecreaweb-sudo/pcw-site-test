@@ -6,7 +6,7 @@
   const $ = (s) => document.querySelector(s);
   const esc = P.esc;
   const safeHref = (u) => (/^https:\/\//i.test(String(u || "")) ? u : "");
-  const x = { api: null, slug: null, tz: "Europe/Paris", data: null, openStage: null, done: {}, busy: false, err: "" };
+  const x = { api: null, slug: null, tz: "Europe/Paris", data: null, openStage: null, openPack: null, doneP: {}, done: {}, busy: false, err: "" };
 
   // ---------------------------------------------------------------- stages ---
   function when(s) {
@@ -63,6 +63,24 @@
   }
 
   // ----------------------------------------------------------------- packs ---
+  function packAction(k) {
+    const d = x.doneP[k.id];
+    if (d) return `<p class="alert alert--ok" role="status">Merci ${esc(d.first_name)} ! Votre pack est enregistr\u00e9 : il est r\u00e9serv\u00e9 \u00e0 votre nom et votre coach vous contacte pour le r\u00e8glement. Vous le retrouverez dans votre <a href="mon-espace.html${x.slug ? "?c=" + encodeURIComponent(x.slug) : ""}">espace joueur</a> d\u00e8s votre premier cours.</p>`;
+    if (x.openPack !== k.id) return `<button type="button" class="btn btn--ball" data-pack-open="${esc(k.id)}">Prendre ce pack</button>`;
+    const i = esc(k.id);
+    return `<form class="stage-form" data-pack-form="${i}" novalidate>
+      <div class="contact-form__grid">
+        <div class="field"><label for="pf-fn-${i}">Pr\u00e9nom</label><input id="pf-fn-${i}" name="first_name" autocomplete="given-name" maxlength="80" required></div>
+        <div class="field"><label for="pf-ln-${i}">Nom</label><input id="pf-ln-${i}" name="last_name" autocomplete="family-name" maxlength="80"></div>
+        <div class="field"><label for="pf-em-${i}">Email</label><input id="pf-em-${i}" name="email" type="email" autocomplete="email" maxlength="200" required></div>
+        <div class="field"><label for="pf-ph-${i}">T\u00e9l\u00e9phone</label><input id="pf-ph-${i}" name="phone" type="tel" autocomplete="tel" maxlength="30" required></div>
+      </div>
+      <label class="check"><input type="checkbox" name="accept" required> J'accepte que mes coordonn\u00e9es soient transmises au coach pour traiter cette commande (voir la page <a href="conditions.html" target="_blank" rel="noopener">Conditions</a>).</label>
+      ${x.err ? `<p class="alert alert--err" role="alert">${esc(x.err)}</p>` : ""}
+      <div class="stage-form__bar"><button type="button" class="btn btn--ghost" data-pack-cancel>Annuler</button>
+        <button type="submit" class="btn btn--ball" ${x.busy ? "disabled" : ""}>${x.busy ? "Envoi\u2026" : "Valider ma commande"}</button></div>
+      <p class="muted stage-form__note">Aucun paiement maintenant : votre coach vous indique comment r\u00e9gler. Paiement en ligne : prochainement disponible.</p></form>`;
+  }
   function renderPacks() {
     const list = x.data.packs || [];
     const sec = $("#packs");
@@ -78,15 +96,8 @@
           ${k.valid_days ? `<span class="tag">valable ${k.valid_days >= 60 ? Math.round(k.valid_days / 30) + " mois" : k.valid_days + " jours"}</span>` : ""}
           ${k.service_name ? `<span class="tag">${esc(k.service_name)}</span>` : ""}</div>
         ${k.description ? `<p>${esc(k.description)}</p>` : ""}
-        <a class="btn btn--ghost" href="#contact" data-pack-ask="${esc(k.name)}">Demander ce pack</a></article>`;
+        <div class="stage__action">${packAction(k)}</div></article>`;
     }).join("");
-    $("#packs-list").onclick = (e) => {
-      const a = e.target.closest("[data-pack-ask]");
-      if (!a) return;
-      const subject = $("#m-subject"), msg = $("#m-message");
-      if (subject) subject.value = "Autre question";
-      if (msg && !msg.value) msg.value = `Bonjour, je souhaite le pack « ${a.dataset.packAsk} ». Pouvez-vous me donner les modalités ?`;
-    };
   }
 
   // Le lien « Mon espace » ne dépend d'aucune donnée : il est ajouté dès le chargement.
@@ -132,6 +143,26 @@
   }
 
   function bind() {
+    $("#packs-list").addEventListener("click", (e) => {
+      const o = e.target.closest("[data-pack-open]");
+      if (o) { x.openPack = o.dataset.packOpen; x.err = ""; renderPacks(); const f = document.querySelector(`[data-pack-form="${x.openPack}"] input`); if (f) f.focus(); return; }
+      if (e.target.closest("[data-pack-cancel]")) { x.openPack = null; x.err = ""; renderPacks(); }
+    });
+    $("#packs-list").addEventListener("submit", async (e) => {
+      const form = e.target.closest("[data-pack-form]");
+      if (!form) return;
+      e.preventDefault();
+      if (x.busy) return;
+      const fd = new FormData(form), id = form.dataset.packForm;
+      if (!fd.get("accept")) { x.err = "Cochez la case pour continuer."; renderPacks(); return; }
+      x.busy = true; x.err = ""; renderPacks();
+      try {
+        await x.api.requestPack(x.slug, { pack_id: id, first_name: fd.get("first_name"), last_name: fd.get("last_name"), email: fd.get("email"), phone: fd.get("phone") });
+        x.doneP[id] = { first_name: String(fd.get("first_name")).trim() };
+        x.openPack = null;
+      } catch (err) { x.err = err.message || "Une erreur est survenue."; }
+      x.busy = false; renderPacks();
+    });
     $("#stages-list").addEventListener("click", (e) => {
       const o = e.target.closest("[data-stage-open]");
       if (o) { x.openStage = o.dataset.stageOpen; x.err = ""; renderStages(); const f = document.querySelector(`[data-stage-form="${x.openStage}"] input`); if (f) f.focus(); return; }

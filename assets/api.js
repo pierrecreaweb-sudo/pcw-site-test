@@ -63,6 +63,8 @@
       registerStage: async (slug, r) => unwrap(await sb.rpc("public_register_stage", {
         p_slug: slug, p_stage_id: r.stage_id, p_first_name: r.first_name, p_last_name: r.last_name || "",
         p_email: r.email, p_phone: r.phone, p_party_size: r.party_size || 1, p_message: r.message || null })),
+      requestPack: async (slug, r) => unwrap(await sb.rpc("public_request_pack", {
+        p_slug: slug, p_pack_id: r.pack_id, p_first_name: r.first_name, p_last_name: r.last_name || "", p_email: r.email, p_phone: r.phone })),
       playerLogin: async (slug, email, password) => {
         const r = unwrap(await sb.rpc("public_player_login", { p_slug: slug, p_email: email, p_password: password }));
         if (r && r.error) throw new ApiError(r.message || "Email ou mot de passe incorrect.", r.error);
@@ -398,6 +400,24 @@
         return delay({ id: row.id, status: "pending", stage_title: st.title, starts_at: st.starts_at, ends_at: st.ends_at, places_left: left - party });
       },
       // Démo : le lien « ?t=demo » ouvre l'espace du premier joueur du coach modèle.
+      requestPack: async (slug, r) => {
+        const c = coachBySlug(slug);
+        if (!c || c.status !== "live") throw new ApiError("Ce site ne prend pas de demande pour le moment.", "SITE_CLOSED");
+        const k = (db.packs || []).find((x) => x.id === r.pack_id && x.coach_id === c.id && x.active);
+        if (!k) throw new ApiError("Ce pack n'est plus disponible.", "PACK_UNAVAILABLE");
+        const email = String(r.email || "").trim().toLowerCase();
+        if (!String(r.first_name || "").trim()) throw new ApiError("Indiquez votre prénom.", "INVALID_INPUT");
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new ApiError("Adresse email invalide.", "INVALID_INPUT");
+        if (!/^\+?[0-9]{9,15}$/.test(String(r.phone || "").replace(/[^0-9+]/g, ""))) throw new ApiError("Numéro de téléphone invalide.", "INVALID_INPUT");
+        db.players = db.players || []; db.player_packs = db.player_packs || [];
+        let p = db.players.find((x) => x.coach_id === c.id && String(x.email || "").toLowerCase() === email);
+        if (!p) { p = { id: P.uuid(), coach_id: c.id, first_name: String(r.first_name).trim(), last_name: String(r.last_name || "").trim(), email, phone: String(r.phone).trim(), created_at: new Date().toISOString() }; db.players.push(p); }
+        if (db.player_packs.some((x) => x.player_id === p.id && x.pack_id === k.id && x.payment_status === "unpaid" && !x.sessions_used)) throw new ApiError("Vous avez déjà demandé ce pack. Votre coach vous contactera pour le règlement.", "ALREADY_REQUESTED");
+        const exp = k.valid_days ? new Date(Date.now() + k.valid_days * 864e5).toISOString().slice(0, 10) : null;
+        const row = { id: P.uuid(), coach_id: c.id, player_id: p.id, pack_id: k.id, name: k.name, sessions_total: k.sessions_count, sessions_used: 0, price_cents: k.price_cents, payment_status: "unpaid", expires_at: exp, note: "Demandé en ligne", created_at: new Date().toISOString() };
+        db.player_packs.push(row); save();
+        return delay({ id: row.id, name: row.name, sessions_total: row.sessions_total, price_cents: row.price_cents, expires_at: exp });
+      },
       playerLogin: async (slug, email, password) => {
         if (!/^demo/i.test(String(password)) ) throw new ApiError("Email ou mot de passe incorrect. (Démo : tapez un mot de passe commençant par « demo ».)", "BAD_LOGIN");
         return delay("demo");

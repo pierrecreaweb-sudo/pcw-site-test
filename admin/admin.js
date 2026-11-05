@@ -988,6 +988,7 @@
         <span class="row__main"><span class="row__title">${esc(k.name)} ${k.active ? "" : pill("neutral", "Masqué")}</span>
           <span class="row__sub">${k.sessions_count} séances · ${euros(k.price_cents)}${k.valid_days ? ` · valable ${k.valid_days} jours` : ""}</span></span><span class="muted">Modifier</span></button>`).join("")
         || `<div class="empty">Aucun pack. Proposez des lots de séances à tarif dégressif.</div>`}</div>
+      ${(() => { const u = (S.playerPacks || []).filter((pp) => pp.payment_status === "unpaid"); return u.length ? `<h3 style="margin:16px 0 8px;font-size:15px">À encaisser (${u.length})</h3><div class="rows">${u.map((pp) => { const pl = playerById(pp.player_id) || {}; return `<div class="row" style="grid-template-columns:minmax(0,1fr) auto;align-items:center"><span class="row__main"><span class="row__title">${esc(`${pl.first_name || ""} ${pl.last_name || ""}`.trim() || "Joueur")} · ${esc(pp.name)}</span><span class="row__sub">${euros(pp.price_cents)}${pp.note ? " · " + esc(pp.note) : ""}${pl.phone ? " · " + esc(pl.phone) : ""}</span></span><button class="btn btn--sm" data-action="pack-pay" data-id="${pp.id}">Marquer payé</button></div>`; }).join("")}</div>` : ""; })()}
       <p class="muted" style="margin:12px 0 0;font-size:13px">Paiement en ligne des packs : <b>prochainement disponible</b>.</p></section>`;
   }
   function packDrawer(id, confirmDelete) {
