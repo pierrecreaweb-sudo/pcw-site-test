@@ -454,7 +454,7 @@
           upcoming: bs.filter((b) => ["pending", "confirmed"].includes(b.status) && new Date(b.starts_at) > now).sort((a, b) => a.starts_at.localeCompare(b.starts_at))
             .map((b) => ({ starts_at: b.starts_at, ends_at: b.ends_at, service_name: b.service_name, status: b.status, location: locName(b.location_id), address: null, cancel_token: b.cancel_token })),
           history: bs.filter((b) => ["confirmed", "completed", "no_show"].includes(b.status) && new Date(b.starts_at) <= now).sort((a, b) => b.starts_at.localeCompare(a.starts_at)).slice(0, 60)
-            .map((b, i) => ({ starts_at: b.starts_at, service_name: b.service_name, status: b.status, location: locName(b.location_id), player_notes: b.player_notes || null, pack_name: null, review_token: i === 0 && b.status !== "no_show" ? "demo-review" : null })),
+            .map((b, i) => ({ starts_at: b.starts_at, service_id: b.service_id, service_name: b.service_name, status: b.status, location: locName(b.location_id), player_notes: b.player_notes || null, pack_name: null, review_token: i === 0 && b.status !== "no_show" ? "demo-review" : null })),
           packs: (db.player_packs || []).filter((x) => x.player_id === p.id).map((x) => ({ name: x.name, sessions_total: x.sessions_total, sessions_used: x.sessions_used, expires_at: x.expires_at, payment_status: x.payment_status })),
           stages: [],
           goals: ds.goals.filter((g) => g.status !== "cancelled"),
