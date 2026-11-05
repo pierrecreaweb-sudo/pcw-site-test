@@ -19,7 +19,7 @@
     const loc = s.location ? `${esc(s.location.name)}${s.location.address ? ", " + esc(s.location.address) : ""}` : "";
     const done = x.done[s.id];
     let action;
-    if (done) action = `<p class="alert alert--ok" role="status">Merci ${esc(done.first_name)} ! Votre demande d'inscription est bien reçue. Le coach vous confirme votre place par email ou téléphone.</p>`;
+    if (done) action = `<p class="alert alert--ok" role="status">Merci ${esc(done.first_name)} ! Votre inscription est confirmée : votre place est réservée. Un email de confirmation vous a été envoyé.</p>`;
     else if (closed) action = `<p class="muted">Inscriptions fermées : <a href="#contact">contactez le coach</a>.</p>`;
     else if (full) action = `<p class="muted"><strong>Complet.</strong> <a href="#contact">Contactez le coach</a> pour la liste d'attente.</p>`;
     else if (x.openStage === s.id) action = stageForm(s);
@@ -50,7 +50,7 @@
       <label class="check"><input type="checkbox" name="accept" required> J'accepte que mes coordonnées soient transmises au coach pour traiter cette inscription (voir la page <a href="conditions.html" target="_blank" rel="noopener">Conditions</a>).</label>
       ${x.err ? `<p class="alert alert--err" role="alert">${esc(x.err)}</p>` : ""}
       <div class="stage-form__bar"><button type="button" class="btn btn--ghost" data-stage-cancel>Annuler</button>
-        <button type="submit" class="btn btn--ball" ${x.busy ? "disabled" : ""}>${x.busy ? "Envoi…" : "Envoyer ma demande"}</button></div>
+        <button type="submit" class="btn btn--ball" ${x.busy ? "disabled" : ""}>${x.busy ? "Envoi…" : "Confirmer mon inscription"}</button></div>
       <p class="muted stage-form__note">Aucun paiement maintenant. Paiement en ligne : prochainement disponible.</p></form>`;
   }
   function renderStages() {

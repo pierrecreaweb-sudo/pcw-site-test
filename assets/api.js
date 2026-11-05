@@ -395,9 +395,10 @@
         const left = st.capacity - taken;
         if (left < party) throw new ApiError(left <= 0 ? "Ce stage est complet." : `Il ne reste que ${left} place(s) pour ce stage.`, "STAGE_FULL");
         if (db.stage_registrations.some((x) => x.stage_id === st.id && x.email === email && x.status !== "cancelled")) throw new ApiError("Vous êtes déjà inscrit à ce stage avec cette adresse.", "ALREADY_REGISTERED");
-        const row = { id: P.uuid(), stage_id: st.id, coach_id: c.id, first_name: String(r.first_name).trim(), last_name: String(r.last_name || "").trim(), email, phone: String(r.phone).trim(), party_size: party, message: r.message || null, status: "pending", payment_status: "unpaid", created_at: new Date().toISOString() };
+        const row = { id: P.uuid(), stage_id: st.id, coach_id: c.id, first_name: String(r.first_name).trim(), last_name: String(r.last_name || "").trim(), email, phone: String(r.phone).trim(), party_size: party, message: r.message || null, status: "confirmed", payment_status: "unpaid", created_at: new Date().toISOString() };
+        row.status = "confirmed";
         db.stage_registrations.push(row); save();
-        return delay({ id: row.id, status: "pending", stage_title: st.title, starts_at: st.starts_at, ends_at: st.ends_at, places_left: left - party });
+        return delay({ id: row.id, status: "confirmed", stage_title: st.title, starts_at: st.starts_at, ends_at: st.ends_at, places_left: left - party });
       },
       // Démo : le lien « ?t=demo » ouvre l'espace du premier joueur du coach modèle.
       requestPack: async (slug, r) => {
